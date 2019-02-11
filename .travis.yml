@@ -1,0 +1,12 @@
+language: node_js
+node_js:
+  - "11"
+
+before_script:
+  - node --version
+  - npm install
+  - ./node_modules/.bin/tsc --version
+  - ./node_modules/.bin/tsc
+
+script:
+  - npm run tcp-tc
