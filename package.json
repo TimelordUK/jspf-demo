@@ -3,6 +3,14 @@
   "version": "1.0.0",
   "description": "",
   "main": "dist/trade_capture/app.js",
+  "homepage": "https://github.com/TimelordUK/jspf-demo",
+  "bugs": {
+    "url": "https://github.com/TimelordUK/jspf-demo/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TimelordUK/jspf-demo.git"
+  },
   "scripts": {
     "install": "cd node_modules/jspurefix && npm run unzip-repo",
     "test": "echo \"Error: no test specified\" && exit 1"
