@@ -57,7 +57,7 @@ export class TradeCaptureServer extends AsciiSession {
 
   // no delimiter substitution on transmit messages
   protected onEncoded (msgType: string, txt: string): void {
-    this.fixLog.info(AsciiSession.asPiped(txt))
+    this.fixLog.info(txt)
   }
 
   private tradeCaptureReportRequest (tcr: ITradeCaptureReportRequest): void {
