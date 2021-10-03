@@ -59,11 +59,7 @@ export class TradeFactory {
     if (!toMake) {
       toMake = TradeFactory.getRandomInt(4, 8)
     }
-    const arr: ITradeCaptureReport[] = []
-    for (let i: number = 0; i < toMake; ++i) {
-      const tc: ITradeCaptureReport = this.singleTradeCaptureReport()
-      arr.push(tc)
-    }
+    const arr: ITradeCaptureReport[] = Array(toMake).fill(0).map(x => this.singleTradeCaptureReport())
     return arr
   }
 
