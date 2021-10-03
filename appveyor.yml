@@ -1,5 +1,62 @@
 version: 1.0.{build}
-build_script:
-  - cmd: script\build.cmd
+
+image: 
+  - Visual Studio 2017
+  - Ubuntu
+
+platform:
+  - x64
+
+environment:
+  matrix:
+    - nodejs_version: "16"
+    - nodejs_version: "14"
+    - nodejs_version: "12"
+
 test_script:
-  - cmd: script\test.cmd
+  - ps: Write-Host "jspurefix test script"    
+
+for:
+-
+    matrix:
+      only:
+        - image: Visual Studio 2017
+  
+    clone_folder: c:\projects\jspf-demo
+    install:
+      - ps: Install-Product node $env:nodejs_version $env:platform
+      - npm install
+    build_script:
+      - cmd: node --version
+      - cmd: cd node_modules\jspurefix 
+      - cmd: script\build.cmd
+      - cmd: cd c:\projects\jspf-demo
+      - cmd: node_modules\.bin\tsc --version
+      - cmd: node_modules\.bin\tsc
+    test_script:
+      - cmd: npm run md-app
+-        
+    matrix:
+      only:
+        - image: Ubuntu
+        - platform: x64
+    clone_folder: /home/appveyor/projects/jspf-demo 
+    
+    install:
+      - nvm install $nodejs_version
+      - npm install
+
+    build_script:
+      - sh: node --version
+      - sh: node_modules/.bin/tsc --version
+      - sh: chmod 555 node_modules/jspurefix/script/build.sh
+      - sh: cd node_modules/jspurefix
+      - sh: dos2unix script/build.sh
+      - sh: cat script/build.sh
+      - sh: script/build.sh
+      - sh: cd /home/appveyor/projects/jspf-demo
+      - sh: node_modules/.bin/tsc
+
+    test_script:
+      - sh: "npm run md-app"
+
