@@ -1,5 +1,5 @@
 import * as path from 'path'
-import { JsFixWinstonLogFactory, WinstonLogger,  IJsFixConfig, IJsFixLogger, SessionMsgFactory, makeConfig} from 'jspurefix'
+import { JsFixWinstonLogFactory, WinstonLogger, IJsFixConfig, IJsFixLogger, SessionMsgFactory, makeConfig } from 'jspurefix'
 
 const logFactory = new JsFixWinstonLogFactory(WinstonLogger.consoleOptions('info'))
 
@@ -27,7 +27,7 @@ export abstract class Launcher {
   }
 
   private async setup () {
-    var root = __dirname
+    const root = __dirname
     const init = path.join(root, this.initiatorConfig)
     const accept = path.join(root, this.acceptorConfig)
     this.logger.info(`init = ${init}, accept = ${accept}`)
