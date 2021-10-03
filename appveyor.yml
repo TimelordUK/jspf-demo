@@ -34,7 +34,7 @@ for:
       - cmd: node_modules\.bin\tsc --version
       - cmd: node_modules\.bin\tsc
     test_script:
-      - cmd: npm run md-app
+      - cmd: npm run tcp-tc
 -        
     matrix:
       only:
@@ -58,5 +58,5 @@ for:
       - sh: node_modules/.bin/tsc
 
     test_script:
-      - sh: "npm run md-app"
+      - sh: "npm run tcp-tc"
 
