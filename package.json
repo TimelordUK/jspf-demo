@@ -12,7 +12,7 @@
     "url": "git+https://github.com/TimelordUK/jspf-demo.git"
   },
   "scripts": {
-    "tcp-tc": "cd dist/trade_capture && node app",
+    "tcp-tc": "node dist/trade_capture/app.js",
     "install": "cd node_modules/jspurefix && npm run unzip-repo",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
