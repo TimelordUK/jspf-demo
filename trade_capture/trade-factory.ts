@@ -1,4 +1,3 @@
-
 import {
   OrdStatus,
   SubscriptionRequestType,
@@ -7,12 +6,12 @@ import {
   TradeRequestStatus,
   TradeRequestType,
   TrdType,
+  ITradeCaptureReportRequestAck,
   ITradeCaptureReport,
-  ITradeCaptureReportRequest,
-  ITradeCaptureReportRequestAck
+  ITradeCaptureReportRequest
 } from 'jspurefix/dist/types/FIX4.4/repo'
 
-import { TradeReportTransType } from 'jspurefix/dist/types/FIXML50SP2/enum/all-enum'
+import { TradeReportTransType } from 'jspurefix/dist/types/FIXML50SP2'
 
 export class TradeFactory {
   private nextTradeId: number = 100000
@@ -37,13 +36,19 @@ export class TradeFactory {
   }
 
   public static tradeCaptureReportRequest (requestId: string, tradeDate: Date): ITradeCaptureReportRequest {
+    const d0 = tradeDate
+    const d1 = new Date(tradeDate.getTime())
+    d1.setDate(d1.getDate() + 1)
     return {
       TradeRequestID: 'all-trades',
       TradeRequestType: TradeRequestType.AllTrades,
       SubscriptionRequestType: SubscriptionRequestType.SnapshotAndUpdates,
       TrdCapDtGrp: [
         {
-          TradeDate: tradeDate
+          TransactTime: d0
+        },
+        {
+          TransactTime: d1
         }
       ]
     } as ITradeCaptureReportRequest
@@ -59,7 +64,11 @@ export class TradeFactory {
     if (!toMake) {
       toMake = TradeFactory.getRandomInt(4, 8)
     }
-    const arr: ITradeCaptureReport[] = Array(toMake).fill(0).map(x => this.singleTradeCaptureReport())
+    const arr: ITradeCaptureReport[] = []
+    for (let i: number = 0; i < toMake; ++i) {
+      const tc: ITradeCaptureReport = this.singleTradeCaptureReport()
+      arr.push(tc)
+    }
     return arr
   }
 

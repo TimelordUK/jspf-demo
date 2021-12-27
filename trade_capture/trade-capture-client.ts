@@ -1,18 +1,7 @@
-import {
-  AsciiSession,
-  MsgView,
-  IJsFixConfig,
-  IJsFixLogger,
-  Dictionary,
-  MsgType } from 'jspurefix'
-
-import {
-  ITradeCaptureReport,
-  ITradeCaptureReportRequest,
-  ITradeCaptureReportRequestAck
-} from 'jspurefix/dist/types/FIX4.4/repo'
-
 import { TradeFactory } from './trade-factory'
+import { Dictionary, IJsFixConfig, MsgView, AsciiSession, IJsFixLogger} from 'jspurefix'
+import { ITradeCaptureReport, ITradeCaptureReportRequest,
+  ITradeCaptureReportRequestAck, MsgType } from 'jspurefix/dist/types/FIX4.4/repo'
 
 export class TradeCaptureClient extends AsciiSession {
   private readonly logger: IJsFixLogger
@@ -23,7 +12,7 @@ export class TradeCaptureClient extends AsciiSession {
     super(config)
     this.logReceivedMsgs = true
     this.reports = new Dictionary<ITradeCaptureReport>()
-    this.fixLog = config.logFactory.plain(`jsfix.${config!.description!.application!.name}.txt`)
+    this.fixLog = config.logFactory.plain(`jsfix.${config.description.application.name}.txt`)
     this.logger = config.logFactory.logger(`${this.me}:TradeCaptureClient`)
   }
 
@@ -55,9 +44,15 @@ export class TradeCaptureClient extends AsciiSession {
     this.fixLog.info(txt)
   }
 
-  // no delimiter substitution on transmit messages
+  // delimiter substitution now done in encoding
   protected onEncoded (msgType: string, txt: string): void {
     this.fixLog.info(txt)
+  }
+
+  private logoutTimer (logoutSeconds: number = 32) {
+    setTimeout(() => {
+      this.done()
+    }, logoutSeconds * 1000)
   }
 
   protected onReady (view: MsgView): void {
@@ -67,12 +62,11 @@ export class TradeCaptureClient extends AsciiSession {
     this.send(MsgType.TradeCaptureReportRequest, tcr)
     const logoutSeconds = 32
     this.logger.info(`will logout after ${logoutSeconds}`)
-    setTimeout(() => {
-      this.done()
-    }, logoutSeconds * 1000)
+    this.logoutTimer()
   }
 
   protected onLogon (view: MsgView, user: string, password: string): boolean {
+    this.logger.info(`onLogon user ${user}`)
     return true
   }
 }

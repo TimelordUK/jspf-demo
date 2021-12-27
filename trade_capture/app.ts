@@ -1,27 +1,24 @@
-import { TradeCaptureClient } from './trade-capture-client'
+import 'reflect-metadata'
+
 import { TradeCaptureServer } from './trade-capture-server'
-import { IJsFixConfig, initiator, acceptor } from 'jspurefix'
-import { Launcher } from '../launcher'
+import { TradeCaptureClient } from './trade-capture-client'
+import { SessionLauncher, EngineFactory, IJsFixConfig } from 'jspurefix'
 
-class AppLauncher extends Launcher {
-  public constructor () {
-    super(
-      './../test-initiator.json',
-      './../test-acceptor.json')
+class AppLauncher extends SessionLauncher {
+  public constructor (client: string = './test-initiator.json',
+                      server: string = './test-acceptor.json') {
+    super(client, server)
   }
 
-  protected getAcceptor (config: IJsFixConfig): Promise<any> {
-    return acceptor(config, c => new TradeCaptureServer(c))
-  }
-
-  protected getInitiator (config: IJsFixConfig): Promise<any> {
-    return initiator(config, c => new TradeCaptureClient(c))
+  protected override makeFactory (config: IJsFixConfig): EngineFactory {
+    const isInitiator = this.isInitiator(config.description)
+    return {
+      makeSession: () => isInitiator ?
+        new TradeCaptureClient(config) :
+        new TradeCaptureServer(config)
+    } as EngineFactory
   }
 }
 
 const l = new AppLauncher()
-l.run().then(() => {
-  console.log('finished.')
-}).catch(e => {
-  console.log(e)
-})
+l.exec()
