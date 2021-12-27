@@ -33,7 +33,7 @@ for:
       - cmd: cd c:\projects\jspf-demo
       - cmd: node_modules\.bin\tsc --version
       - cmd: pwd
-      - cmd: node_modules\.bin\tsc
+      - cmd: npm run compile
     test_script:
       - cmd: cd c:\projects\jspf-demo
       - cmd: npm run tcp-tc

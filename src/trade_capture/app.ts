@@ -2,12 +2,13 @@ import 'reflect-metadata'
 
 import { TradeCaptureServer } from './trade-capture-server'
 import { TradeCaptureClient } from './trade-capture-client'
-import { SessionLauncher, EngineFactory, IJsFixConfig } from 'jspurefix'
+import { EngineFactory, IJsFixConfig, SessionLauncher } from 'jspurefix'
 
 class AppLauncher extends SessionLauncher {
-  public constructor (client: string = './test-initiator.json',
-                      server: string = './test-acceptor.json') {
+  public constructor (client: string = '../../test-initiator.json',
+                      server: string = '../../test-acceptor.json') {
     super(client, server)
+    this.root = __dirname
   }
 
   protected override makeFactory (config: IJsFixConfig): EngineFactory {

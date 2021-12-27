@@ -1,9 +1,12 @@
 {
   "compilerOptions": {
+    "rootDir": "src",
     "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "target": "es6",
     "module": "commonjs",
     "noImplicitAny": true,
+    "declaration": true,
     "removeComments": true,
     "preserveConstEnums": true,
     "sourceMap": true,
@@ -13,6 +16,11 @@
   },
   "compileOnSave": true,
   "include": [
-    "**/*.ts"
+    "src/**/*",
+    "src/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "./dist"
   ]
 }

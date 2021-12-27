@@ -12,14 +12,15 @@
     "url": "git+https://github.com/TimelordUK/jspf-demo.git"
   },
   "scripts": {
-    "tcp-tc": "node dist/app.js",
+    "compile": "tsc",
+    "tcp-tc": "node dist/trade_capture/app.js",
     "install": "cd node_modules/jspurefix && npm run unzip-repo",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "jspurefix": "^2.0.0",
+    "jspurefix": "^2.0.2",
     "reflect-metadata": "^0.1.13",
     "request": "^2.88.2",
     "typings": "^2.1.1"
