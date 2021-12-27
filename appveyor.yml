@@ -32,6 +32,7 @@ for:
       - cmd: script\build.cmd
       - cmd: cd c:\projects\jspf-demo
       - cmd: node_modules\.bin\tsc --version
+      - cmd: pwd
       - cmd: node_modules\.bin\tsc
     test_script:
       - cmd: cd c:\projects\jspf-demo
