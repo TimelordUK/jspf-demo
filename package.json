@@ -1,6 +1,6 @@
 {
   "name": "jspf-demo",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "",
   "main": "dist/trade_capture/app.js",
   "homepage": "https://github.com/TimelordUK/jspf-demo",
