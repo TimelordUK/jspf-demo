@@ -12,7 +12,7 @@
     "url": "git+https://github.com/TimelordUK/jspf-demo.git"
   },
   "scripts": {
-    "compile": "tsc",
+    "build": "tsc",
     "tcp-tc": "node dist/trade_capture/app.js",
     "install": "cd node_modules/jspurefix && npm run unzip-repo",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -20,19 +20,19 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "jspurefix": "^2.1.0",
+    "jspurefix": "^3.0.0",
     "reflect-metadata": "^0.1.13",
     "request": "^2.88.2",
     "typings": "^2.1.1"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.182",
-    "@types/node": "^18.6.4",
+    "@types/lodash": "^4.14.191",
+    "@types/node": "^18.11.18",
     "@types/sax": "^1.2.4",
     "standard": "^17.0.0",
-    "ts-jest": "^28.0.7",
+    "ts-jest": "^29.0.3",
     "tslint": "^6.0.0",
     "tslint-config-standard": "^9.0.0",
-    "typescript": "^4.7.4"
+    "typescript": "^4.9.4"
   }
 }
