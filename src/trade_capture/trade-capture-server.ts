@@ -13,13 +13,13 @@ export class TradeCaptureServer extends AsciiSession {
   private readonly logger: IJsFixLogger
   private readonly fixLog: IJsFixLogger
   private readonly tradeFactory: TradeFactory = new TradeFactory()
-  private timerHandle: NodeJS.Timer = null
+  private timerHandle: NodeJS.Timer
 
   constructor (public readonly config: IJsFixConfig) {
     super(config)
     this.logReceivedMsgs = true
     this.logger = config.logFactory.logger(`${this.me}:TradeCaptureServer`)
-    this.fixLog = config.logFactory.plain(`jsfix.${config.description.application.name}.txt`)
+    this.fixLog = config.logFactory.plain(`jsfix.${config?.description?.application?.name}.txt`)
   }
 
   protected onApplicationMsg (msgType: string, view: MsgView): void {
@@ -32,7 +32,11 @@ export class TradeCaptureServer extends AsciiSession {
 
       default: {
         const seqNum = view.getTyped(MsgTag.MsgSeqNum)
-        this.send(msgType, this.config.factory.reject(msgType, seqNum, `${this.me}: unexpected msg type '${msgType}'`, SessionRejectReason.InvalidMsgType))
+        const msg: string = `${this.me}: unexpected msg type '${msgType}'`
+        const fact = this.config.factory
+        if (fact != null) {
+          this.send(msgType, fact.reject(msgType, seqNum, msg, SessionRejectReason.InvalidMsgType))
+        }
         break
       }
     }

@@ -12,6 +12,7 @@
     "sourceMap": true,
     "inlineSources": true,
     "pretty": true,
+    "strictNullChecks": true,
     "outDir": "./dist"
   },
   "compileOnSave": true,
