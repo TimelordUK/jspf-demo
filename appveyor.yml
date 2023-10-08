@@ -9,10 +9,10 @@ platform:
 
 environment:
   matrix:
+    - nodejs_version: "20"
     - nodejs_version: "18"
     - nodejs_version: "16"
     - nodejs_version: "14"
-    - nodejs_version: "12"
 
 test_script:
   - ps: Write-Host "jspurefix test script"    
