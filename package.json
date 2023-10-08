@@ -20,15 +20,15 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "jspurefix": "^3.0.0",
+    "jspurefix": "^3.1.0",
     "reflect-metadata": "^0.1.13",
     "request": "^2.88.2",
     "typings": "^2.1.1"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.191",
-    "@types/node": "^18.11.18",
-    "@types/sax": "^1.2.4",
+    "@types/lodash": "^4.14.199",
+    "@types/node": "^20.8.3",
+    "@types/sax": "^1.2.5",
     "@typescript-eslint/eslint-plugin": "^6.7.4",
     "@typescript-eslint/parser": "^6.7.4",
     "eslint": "^8.51.0",

@@ -51,7 +51,7 @@ export class TradeCaptureClient extends AsciiSession {
     this.fixLog.info(txt)
   }
 
-  protected logoutTimer (logoutSeconds: number = 32) {
+  protected logoutTimer (logoutSeconds: number = 32): void {
     setTimeout(() => {
       this.done()
     }, logoutSeconds * 1000)
