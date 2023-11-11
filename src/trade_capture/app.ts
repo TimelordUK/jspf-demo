@@ -5,8 +5,8 @@ import { TradeCaptureClient } from './trade-capture-client'
 import { EngineFactory, IJsFixConfig, SessionLauncher } from 'jspurefix'
 
 class AppLauncher extends SessionLauncher {
-  public constructor (client: string = '../../test-initiator.json',
-    server: string = '../../test-acceptor.json') {
+  public constructor (client: string = '../../data/session/test-initiator.json',
+    server: string = '../../data/session/test-acceptor.json') {
     super(client, server)
     this.root = __dirname
   }

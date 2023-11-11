@@ -14,7 +14,10 @@
   "scripts": {
     "build": "tsc",
     "tcp-tc": "node dist/trade_capture/app.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "parse-client-objects": "node node_modules/jspurefix/dist/jsfix-cmd --fix=../../jsfix.test_client.txt --delimiter=\"|\"  --session=../../data/session/test-initiator.json --objects",
+    "parse-client-tokens": "node node_modules/jspurefix/dist/jsfix-cmd --fix=../../jsfix.test_client.txt --delimiter=\"|\"  --session=../../data/session/test-initiator.json --tokens",
+    "parse-client-stats": "node node_modules/jspurefix/dist/jsfix-cmd --fix=../../jsfix.test_client.txt --delimiter=\"|\"  --session=../../data/session/test-initiator.json --tokens"
   },
   "author": "",
   "license": "ISC",
