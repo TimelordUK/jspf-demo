@@ -14,24 +14,23 @@
   "scripts": {
     "build": "tsc",
     "tcp-tc": "node dist/trade_capture/app.js",
-    "install": "cd node_modules/jspurefix && npm run unzip-repo",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "jspurefix": "^3.1.0",
+    "jspurefix": "^3.2.0",
     "reflect-metadata": "^0.1.13",
     "request": "^2.88.2",
     "typings": "^2.1.1"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.199",
-    "@types/node": "^20.8.3",
-    "@types/sax": "^1.2.5",
-    "@typescript-eslint/eslint-plugin": "^6.7.4",
-    "@typescript-eslint/parser": "^6.7.4",
-    "eslint": "^8.51.0",
+    "@types/lodash": "^4.14.201",
+    "@types/node": "^20.9.0",
+    "@types/sax": "^1.2.7",
+    "@typescript-eslint/eslint-plugin": "^6.10.0",
+    "@typescript-eslint/parser": "^6.10.0",
+    "eslint": "^8.53.0",
     "eslint-config-standard-with-typescript": "^39.1.1",
     "madge": "^6.1.0",
     "standard": "^17.1.0",
