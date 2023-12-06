@@ -25,17 +25,17 @@ export class TradeFactory {
       'Steel'
     ]
 
-  public static tradeCaptureReportRequestAck (tcr: ITradeCaptureReportRequest, status: TradeRequestStatus): ITradeCaptureReportRequestAck {
+  public static tradeCaptureReportRequestAck (tcr: ITradeCaptureReportRequest, status: TradeRequestStatus): Partial<ITradeCaptureReportRequestAck> {
     // send back an ack.
     return {
       TradeRequestID: tcr.TradeRequestID,
       TradeRequestType: tcr.TradeRequestType,
       TradeRequestStatus: status,
       TradeRequestResult: TradeRequestResult.Successful
-    } as ITradeCaptureReportRequestAck
+    }
   }
 
-  public static tradeCaptureReportRequest (requestId: string, tradeDate: Date): ITradeCaptureReportRequest {
+  public static tradeCaptureReportRequest (requestId: string, tradeDate: Date): Partial<ITradeCaptureReportRequest> {
     const d0 = tradeDate
     const d1 = new Date(tradeDate.getTime())
     d1.setDate(d1.getDate() + 1)
@@ -51,7 +51,7 @@ export class TradeFactory {
           TransactTime: d1
         }
       ]
-    } as ITradeCaptureReportRequest
+    }
   }
 
   protected static getRandomInt (min: number, max: number): number {
@@ -60,19 +60,19 @@ export class TradeFactory {
     return Math.floor(Math.random() * (max - min)) + min
   }
 
-  public batchOfTradeCaptureReport (toMake?: number): ITradeCaptureReport[] {
+  public batchOfTradeCaptureReport (toMake?: number): Array<Partial<ITradeCaptureReport>> {
     if (!toMake) {
       toMake = TradeFactory.getRandomInt(4, 8)
     }
-    const arr: ITradeCaptureReport[] = []
+    const arr: Array<Partial<ITradeCaptureReport>> = []
     for (let i: number = 0; i < toMake; ++i) {
-      const tc: ITradeCaptureReport = this.singleTradeCaptureReport()
+      const tc: Partial<ITradeCaptureReport> = this.singleTradeCaptureReport()
       arr.push(tc)
     }
     return arr
   }
 
-  public singleTradeCaptureReport (): ITradeCaptureReport {
+  public singleTradeCaptureReport (): Partial<ITradeCaptureReport> {
     const tradeReportId = this.nextTradeId++
     const qty: number = TradeFactory.getRandomInt(100, 200)
     const price: number = Math.round(Math.random() * 100 * 100) / 100
@@ -96,6 +96,6 @@ export class TradeFactory {
       LastQty: qty,
       LastPx: price
 
-    } as ITradeCaptureReport
+    }
   }
 }

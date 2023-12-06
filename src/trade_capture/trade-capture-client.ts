@@ -59,7 +59,7 @@ export class TradeCaptureClient extends AsciiSession {
 
   protected onReady (view: MsgView): void {
     this.logger.info('ready')
-    const tcr: ITradeCaptureReportRequest = TradeFactory.tradeCaptureReportRequest('all-trades', new Date())
+    const tcr: Partial<ITradeCaptureReportRequest> = TradeFactory.tradeCaptureReportRequest('all-trades', new Date())
     // send request to server
     this.send(MsgType.TradeCaptureReportRequest, tcr)
     const logoutSeconds = 32

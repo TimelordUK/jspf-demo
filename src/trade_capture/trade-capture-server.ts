@@ -73,7 +73,7 @@ export class TradeCaptureServer extends AsciiSession {
     // send back an ack.
     this.send(MsgType.TradeCaptureReportRequestAck, TradeFactory.tradeCaptureReportRequestAck(tcr, TradeRequestStatus.Accepted))
     // send some trades
-    const batch: ITradeCaptureReport[] = this.tradeFactory.batchOfTradeCaptureReport(5)
+    const batch: Array<Partial<ITradeCaptureReport>> = this.tradeFactory.batchOfTradeCaptureReport(5)
     batch.forEach((tc: ITradeCaptureReport) => {
       this.send(MsgType.TradeCaptureReport, tc)
     })
@@ -83,7 +83,7 @@ export class TradeCaptureServer extends AsciiSession {
       case SubscriptionRequestType.SnapshotAndUpdates: {
         this.timerHandle = setInterval(() => {
           if (Math.random() < 0.4) {
-            const tc: ITradeCaptureReport = this.tradeFactory.singleTradeCaptureReport()
+            const tc: Partial<ITradeCaptureReport> = this.tradeFactory.singleTradeCaptureReport()
             this.send(MsgType.TradeCaptureReport, tc)
           }
         }, 5000)
