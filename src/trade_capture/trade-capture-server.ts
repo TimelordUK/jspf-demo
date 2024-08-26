@@ -31,7 +31,7 @@ export class TradeCaptureServer extends AsciiSession {
       }
 
       default: {
-        const seqNum = view.getTyped(MsgTag.MsgSeqNum)
+        const seqNum = view.getTyped(MsgTag.MsgSeqNum) as number
         const msg: string = `${this.me}: unexpected msg type '${msgType}'`
         const fact = this.config.factory
         if (fact != null) {
