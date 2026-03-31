@@ -1,0 +1,40 @@
+name: Build and Run Demo
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and Run
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build
+      run: npm run build
+
+    - name: Run demo (quick test)
+      run: |
+        timeout 10 npm run tcp-tc || exit_code=$?
+        # Exit code 124 means timeout (expected), anything else is a real error
+        if [ "${exit_code:-0}" -eq 124 ]; then
+          echo "Demo ran successfully (terminated by timeout as expected)"
+          exit 0
+        elif [ "${exit_code:-0}" -ne 0 ]; then
+          echo "Demo failed with exit code $exit_code"
+          exit $exit_code
+        fi
