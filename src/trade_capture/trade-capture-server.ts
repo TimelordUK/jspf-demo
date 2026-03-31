@@ -13,7 +13,7 @@ export class TradeCaptureServer extends AsciiSession {
   private readonly logger: IJsFixLogger
   private readonly fixLog: IJsFixLogger
   private readonly tradeFactory: TradeFactory = new TradeFactory()
-  private timerHandle: NodeJS.Timeout
+  private timerHandle: NodeJS.Timeout | undefined
 
   constructor (public readonly config: IJsFixConfig) {
     super(config)
@@ -74,7 +74,7 @@ export class TradeCaptureServer extends AsciiSession {
     this.send(MsgType.TradeCaptureReportRequestAck, TradeFactory.tradeCaptureReportRequestAck(tcr, TradeRequestStatus.Accepted))
     // send some trades
     const batch: Array<Partial<ITradeCaptureReport>> = this.tradeFactory.batchOfTradeCaptureReport(5)
-    batch.forEach((tc: ITradeCaptureReport) => {
+    batch.forEach((tc: Partial<ITradeCaptureReport>) => {
       this.send(MsgType.TradeCaptureReport, tc)
     })
     this.send(MsgType.TradeCaptureReportRequestAck, TradeFactory.tradeCaptureReportRequestAck(tcr, TradeRequestStatus.Completed))
