@@ -9,6 +9,8 @@ export class TradeCaptureClient extends AsciiSession {
   private readonly logger: IJsFixLogger
   private readonly fixLog: IJsFixLogger
   private readonly reports: Map<string, ITradeCaptureReport>
+  private hasSentTradeRequest: boolean = false
+  private logoutTimerHandle: NodeJS.Timeout | undefined
 
   constructor (public readonly config: IJsFixConfig) {
     super(config)
@@ -39,6 +41,10 @@ export class TradeCaptureClient extends AsciiSession {
 
   protected onStopped (): void {
     this.logger.info('stopped')
+    if (this.logoutTimerHandle) {
+      clearTimeout(this.logoutTimerHandle)
+      this.logoutTimerHandle = undefined
+    }
   }
 
   // use msgType for example to persist only trade capture messages to database
@@ -51,20 +57,35 @@ export class TradeCaptureClient extends AsciiSession {
     this.fixLog.info(txt)
   }
 
-  protected logoutTimer (logoutSeconds: number = 32): void {
-    setTimeout(() => {
+  protected scheduleLogout (logoutSeconds: number = 32): void {
+    // Guard: clear any existing logout timer from a previous session (reconnect scenario)
+    if (this.logoutTimerHandle) {
+      clearTimeout(this.logoutTimerHandle)
+    }
+    this.logoutTimerHandle = setTimeout(() => {
       this.done()
     }, logoutSeconds * 1000)
   }
 
   protected onReady (view: MsgView): void {
+    // Reset all application state on each new session (handles reconnect)
+    this.reports.clear()
+    this.hasSentTradeRequest = false
     this.logger.info('ready')
+    this.sendTradeRequest()
+  }
+
+  private sendTradeRequest (): void {
+    if (this.hasSentTradeRequest) {
+      this.logger.info('trade request already sent, skipping')
+      return
+    }
+    this.hasSentTradeRequest = true
     const tcr: Partial<ITradeCaptureReportRequest> = TradeFactory.tradeCaptureReportRequest('all-trades', new Date())
-    // send request to server
     this.send(MsgType.TradeCaptureReportRequest, tcr)
     const logoutSeconds = 32
     this.logger.info(`will logout after ${logoutSeconds}`)
-    this.logoutTimer()
+    this.scheduleLogout(logoutSeconds)
   }
 
   protected onLogon (view: MsgView, user: string, password: string): boolean {

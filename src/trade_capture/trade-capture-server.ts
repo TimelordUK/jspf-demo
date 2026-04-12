@@ -43,14 +43,21 @@ export class TradeCaptureServer extends AsciiSession {
   }
 
   protected onReady (view: MsgView): void {
-    // server waits for client to make a request
+    // Reset any running timer from a previous session (reconnect scenario).
+    // Without this, a reconnect starts a second timer while the old one keeps firing.
+    this.stopUnsolicitedTradeTimer()
     this.logger.info('ready for requests.')
   }
 
   protected onStopped (): void {
     this.logger.info('stopped')
+    this.stopUnsolicitedTradeTimer()
+  }
+
+  private stopUnsolicitedTradeTimer (): void {
     if (this.timerHandle) {
       clearInterval(this.timerHandle)
+      this.timerHandle = undefined
     }
   }
 
@@ -81,6 +88,8 @@ export class TradeCaptureServer extends AsciiSession {
     // start sending the odd 'live' trade
     switch (tcr.SubscriptionRequestType) {
       case SubscriptionRequestType.SnapshotAndUpdates: {
+        // Defensive: stop any existing timer before starting a new one
+        this.stopUnsolicitedTradeTimer()
         this.timerHandle = setInterval(() => {
           if (Math.random() < 0.4) {
             const tc: Partial<ITradeCaptureReport> = this.tradeFactory.singleTradeCaptureReport()
