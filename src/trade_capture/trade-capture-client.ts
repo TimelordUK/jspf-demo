@@ -4,11 +4,16 @@ import {
   ITradeCaptureReport, ITradeCaptureReportRequest,
   ITradeCaptureReportRequestAck, MsgType
 } from 'jspurefix/dist/types/FIX4.4/repo'
+import { ISecurityDefinition } from 'jspurefix/dist/types/FIX4.4/repo/security_definition'
+import { ISecurityDefinitionRequest } from 'jspurefix/dist/types/FIX4.4/repo/security_definition_request'
+import { SecurityRequestType } from 'jspurefix/dist/types/FIX4.4/repo/enum/all-enum'
 
 export class TradeCaptureClient extends AsciiSession {
   private readonly logger: IJsFixLogger
   private readonly fixLog: IJsFixLogger
   private readonly reports: Map<string, ITradeCaptureReport>
+  private readonly knownSecurities: string[] = []
+  private receivedSecurityCount: number = 0
   private hasSentTradeRequest: boolean = false
   private logoutTimerHandle: NodeJS.Timeout | undefined
 
@@ -23,8 +28,20 @@ export class TradeCaptureClient extends AsciiSession {
   protected onApplicationMsg (msgType: string, view: MsgView): void {
     this.logger.info(`${view.toJson()}`)
     switch (msgType) {
+      case MsgType.SecurityDefinition: {
+        const sd: ISecurityDefinition = view.toObject() as ISecurityDefinition
+        const symbol = sd.Instrument?.Symbol ?? 'unknown'
+        this.receivedSecurityCount++
+        this.knownSecurities.push(symbol)
+        this.logger.info(`[${this.receivedSecurityCount}] received security: ${symbol}`)
+        // After receiving all securities, send trade capture request
+        if (this.receivedSecurityCount >= 5 && !this.hasSentTradeRequest) {
+          this.sendTradeRequest()
+        }
+        break
+      }
+
       case MsgType.TradeCaptureReport: {
-        // create an object and cast to the interface
         const tc: ITradeCaptureReport = view.toObject() as ITradeCaptureReport
         this.reports.set(tc.TradeReportID, tc)
         this.logger.info(`[reports: ${this.reports.size}] received tc ExecID = ${tc.ExecID} TradeReportID  = ${tc.TradeReportID} Symbol = ${tc.Instrument.Symbol} ${tc.LastQty} @ ${tc.LastPx}`)
@@ -70,9 +87,21 @@ export class TradeCaptureClient extends AsciiSession {
   protected onReady (view: MsgView): void {
     // Reset all application state on each new session (handles reconnect)
     this.reports.clear()
+    this.knownSecurities.length = 0
+    this.receivedSecurityCount = 0
     this.hasSentTradeRequest = false
     this.logger.info('ready')
-    this.sendTradeRequest()
+    // First request security definitions — trade request follows once 5 securities received
+    this.sendSecurityDefinitionRequest()
+  }
+
+  private sendSecurityDefinitionRequest (): void {
+    const sdr: Partial<ISecurityDefinitionRequest> = {
+      SecurityReqID: 'sec-req-1',
+      SecurityRequestType: SecurityRequestType.RequestListSecurities
+    }
+    this.logger.info('sending SecurityDefinitionRequest')
+    this.send(MsgType.SecurityDefinitionRequest, sdr)
   }
 
   private sendTradeRequest (): void {

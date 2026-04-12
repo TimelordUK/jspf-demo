@@ -16,7 +16,7 @@ import { TradeReportTransType } from 'jspurefix/dist/types/FIXML50SP2'
 export class TradeFactory {
   private nextTradeId: number = 100000
   private nextExecId: number = 600000
-  private readonly securities: string[] =
+  public readonly securities: string[] =
     [
       'Gold',
       'Silver',

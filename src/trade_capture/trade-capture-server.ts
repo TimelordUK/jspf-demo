@@ -7,6 +7,8 @@ import {
   MsgType, SessionRejectReason,
   SubscriptionRequestType, TradeRequestStatus
 } from 'jspurefix/dist/types/FIX4.4/repo'
+import { ISecurityDefinitionRequest } from 'jspurefix/dist/types/FIX4.4/repo/security_definition_request'
+import { SecurityResponseType } from 'jspurefix/dist/types/FIX4.4/repo/enum/all-enum'
 import { TradeFactory } from './trade-factory'
 
 export class TradeCaptureServer extends AsciiSession {
@@ -25,6 +27,11 @@ export class TradeCaptureServer extends AsciiSession {
   protected onApplicationMsg (msgType: string, view: MsgView): void {
     this.logger.info(`${view.toJson()}`)
     switch (msgType) {
+      case MsgType.SecurityDefinitionRequest: {
+        this.securityDefinitionRequest(view.toObject() as ISecurityDefinitionRequest)
+        break
+      }
+
       case MsgType.TradeCaptureReportRequest: {
         this.tradeCaptureReportRequest(view.toObject() as ITradeCaptureReportRequest)
         break
@@ -73,6 +80,25 @@ export class TradeCaptureServer extends AsciiSession {
   // delimiter substitution now done in encoding
   protected onEncoded (msgType: string, txt: string): void {
     this.fixLog.info(txt)
+  }
+
+  private securityDefinitionRequest (sdr: ISecurityDefinitionRequest): void {
+    this.logger.info(`received security definition request ${sdr.SecurityReqID}`)
+    const securities = this.tradeFactory.securities
+    let responseId = 1
+    for (const symbol of securities) {
+      this.send(MsgType.SecurityDefinition, {
+        SecurityReqID: sdr.SecurityReqID,
+        SecurityResponseID: `sec-resp-${responseId++}`,
+        SecurityResponseType: SecurityResponseType.AcceptAsIs,
+        Instrument: {
+          Symbol: symbol,
+          SecurityID: `${symbol}.INC`
+        },
+        Currency: 'USD'
+      })
+    }
+    this.logger.info(`sent ${securities.length} security definitions`)
   }
 
   private tradeCaptureReportRequest (tcr: ITradeCaptureReportRequest): void {
