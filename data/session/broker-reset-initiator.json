@@ -1,0 +1,26 @@
+{
+  "application": {
+    "reconnectSeconds": 10,
+    "type": "initiator",
+    "name": "test_client",
+    "tcp": {
+      "host": "localhost",
+      "port": 2346
+    },
+    "protocol": "ascii",
+    "dictionary": "qf44"
+  },
+  "store": {
+    "type": "file",
+    "directory": "store/broker-initiator"
+  },
+  "Username": "js-client",
+  "Password": "pwd-client",
+  "EncryptMethod": 0,
+  "ResetSeqNumFlag": false,
+  "HeartBtInt": 30,
+  "SenderCompId": "init-comp",
+  "TargetCompID": "accept-comp",
+  "TargetSubID": "fix",
+  "BeginString": "FIX4.4"
+}
