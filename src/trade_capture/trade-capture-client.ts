@@ -9,12 +9,16 @@ import { ISecurityDefinitionRequest } from 'jspurefix/dist/types/FIX4.4/repo/sec
 import { SecurityRequestType } from 'jspurefix/dist/types/FIX4.4/repo/enum/all-enum'
 
 export class TradeCaptureClient extends AsciiSession {
+  // Static: set via CLI --disconnect-after for reconnect testing
+  static disconnectAfterSeconds: number | undefined
+
   private readonly logger: IJsFixLogger
   private readonly fixLog: IJsFixLogger
   private readonly reports: Map<string, ITradeCaptureReport>
   private readonly knownSecurities: string[] = []
   private receivedSecurityCount: number = 0
   private hasSentTradeRequest: boolean = false
+  private hasScheduledDisconnect: boolean = false
   private logoutTimerHandle: NodeJS.Timeout | undefined
 
   constructor (public readonly config: IJsFixConfig) {
@@ -91,6 +95,18 @@ export class TradeCaptureClient extends AsciiSession {
     this.receivedSecurityCount = 0
     this.hasSentTradeRequest = false
     this.logger.info('ready')
+
+    // Schedule disconnect for reconnect testing (only once per process)
+    const disconnectAfter = TradeCaptureClient.disconnectAfterSeconds
+    if (disconnectAfter != null && !this.hasScheduledDisconnect) {
+      this.hasScheduledDisconnect = true
+      this.logger.info(`will disconnect after ${disconnectAfter}s for reconnect testing`)
+      setTimeout(() => {
+        this.logger.info('triggering scheduled disconnect')
+        this.stop()
+      }, disconnectAfter * 1000)
+    }
+
     // First request security definitions — trade request follows once 5 securities received
     this.sendSecurityDefinitionRequest()
   }

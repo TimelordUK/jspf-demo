@@ -68,3 +68,4 @@ dist/
 data/fix_repo
 /jsfix.test_client.txt
 /jsfix.test_server.txt
+capture.txt
