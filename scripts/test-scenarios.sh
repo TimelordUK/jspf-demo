@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # jspf-demo Test Scenarios
-# Usage: ./scripts/test-scenarios.sh [client-bounce|server-bounce|broker-reset|multi-client|stale-transport|all]
+# Usage: ./scripts/test-scenarios.sh [client-bounce|server-bounce|broker-reset|multi-client|dynamic|stale-transport|all]
 #
 
 set -e
@@ -33,6 +33,7 @@ BROKER_CLIENT_SEQNUMS="$STORE_DIR/broker-initiator/FIX4.4-init-comp-accept-comp.
 BROKER_SERVER_SEQNUMS="$STORE_DIR/broker-acceptor/FIX4.4-accept-comp-init-comp.seqnums"
 MULTI_CLIENT_STORE="$STORE_DIR/multi-initiator"
 MULTI_SERVER_STORE="$STORE_DIR/multi-acceptor"
+DYNAMIC_SERVER_STORE="$STORE_DIR/dynamic-acceptor"
 
 get_sender_seq() { [ -f "$1" ] && awk -F':' '{print $1}' "$1" | tr -d ' ' || echo "0"; }
 
@@ -283,12 +284,51 @@ test_stale_transport() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# A venue configured with TargetCompID '*' and no knowledge of any counterparty.
+# Four unrelated names log on - one of them well after the venue started - and each
+# ends up with its own SessionId and its own persisted store.
+test_dynamic() {
+    print_banner "SCENARIO: Dynamic Acceptor (TargetCompID '*')"
+    echo "Counterparties the venue was never configured with log on and are adopted."
+
+    print_header "STEP 1: Clean Start"
+    clean_dir "$DYNAMIC_SERVER_STORE" "$STORE_DIR/dynamic-initiator"
+    print_success "Store cleaned"
+
+    print_header "STEP 2: Run venue with three counterparties, a fourth joining later"
+    local log="$STORE_DIR/dynamic.log"
+    $APP dynamic --timeout $((LONG_TIMEOUT * 2)) > "$log" 2>&1 || true
+
+    print_header "STEP 3: Which identities did the venue adopt?"
+    grep -oE "binding session identity to peer SenderCompID '[^']*'" "$log" | sed "s/^/  /" || true
+
+    print_header "STEP 4: Stores written, one per counterparty"
+    local stores
+    stores=$(ls "$DYNAMIC_SERVER_STORE"/*.seqnums 2>/dev/null | wc -l)
+    for f in "$DYNAMIC_SERVER_STORE"/*.seqnums; do
+        [ -f "$f" ] && echo "  $(basename "$f"): $(cat "$f")"
+    done
+
+    print_header "RESULT"
+    local configured
+    configured=$(grep -c "hedge-fund-a\|prop-desk-d" data/session/dynamic-acceptor.json || true)
+    if [ "$stores" -eq 4 ] && [ "$configured" -eq 0 ]; then
+        print_success "Four counterparties adopted, four stores, none named in the acceptor config"
+        return 0
+    else
+        print_error "Expected 4 stores and 0 configured names, got stores=$stores configured=$configured"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 run_all() {
     local failures=0
     test_client_bounce || failures=$((failures + 1))
     test_server_bounce || failures=$((failures + 1))
     test_broker_reset  || failures=$((failures + 1))
     test_multi_client  || failures=$((failures + 1))
+    test_dynamic       || failures=$((failures + 1))
     test_stale_transport || failures=$((failures + 1))
     echo ""
     print_banner "SUMMARY"
@@ -306,7 +346,8 @@ case "$SCENARIO" in
     server-bounce)  test_server_bounce ;;
     broker-reset)   test_broker_reset ;;
     multi-client)   test_multi_client ;;
+    dynamic)        test_dynamic ;;
     stale-transport) test_stale_transport ;;
     all)            run_all ;;
-    *)  echo "Unknown: $SCENARIO (valid: client-bounce, server-bounce, broker-reset, multi-client, stale-transport, all)"; exit 1 ;;
+    *)  echo "Unknown: $SCENARIO (valid: client-bounce, server-bounce, broker-reset, multi-client, dynamic, stale-transport, all)"; exit 1 ;;
 esac

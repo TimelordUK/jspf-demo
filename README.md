@@ -34,6 +34,7 @@ The demo supports three session modes that control store type and sequence reset
 | `recovery` | file | N (both) | 2345 | Sequences persist across restarts. Resume where left off. |
 | `broker-reset` | file | server=Y, client=N | 2346 | Server forces reset (simulates daily broker reset). Client wants resume but respects server reset. |
 | `multi-client` | file | N (both) | 2345 | Acceptor runs `TargetCompID: "*"`. Several clients share one listener, each with its own identity and store. |
+| `dynamic` | file | N (both) | 2347 | Same wildcard acceptor, but the counterparties are unrelated names it has never been configured with — including one that joins after startup. |
 | `clear` | — | — | — | Delete every store directory and exit. |
 
 ```bash
@@ -41,6 +42,7 @@ npm run tcp-tc              # reset mode (default)
 npm run recovery            # recovery mode (file store)
 npm run broker-reset        # broker-reset mode
 npm run multi-client        # three clients against one wildcard acceptor
+npm run dynamic             # counterparties the venue has never heard of
 npm run clear               # wipe the stores
 ```
 
@@ -52,13 +54,15 @@ In recovery and broker-reset modes, a QuickFix-compatible file store is created 
 Usage: jspf-demo [options] [mode]
 
 Arguments:
-  mode                          session mode: reset, recovery, broker-reset, multi-client, clear
+  mode                          session mode: reset, recovery, broker-reset, multi-client, dynamic, clear
 
 Options:
   --client                      run initiator (client) only
   --server                      run acceptor (server) only
   --clients <n>                 number of clients to spawn, 1-5 (multi-client acceptor testing)
   --store <dir>                 override the store directory from the session config
+  --counterparties <names>      dynamic mode: comma separated SenderCompIds to connect
+  --late-join-after <seconds>   dynamic mode: seconds before an unseen counterparty joins (0 disables)
   --timeout <seconds>           shutdown after N seconds
   --disconnect-after <seconds>  disconnect client after N seconds (reconnect testing)
   -h, --help                    display help for command
@@ -83,6 +87,58 @@ node dist/trade_capture/app.js recovery --server --timeout 30
 # Three clients against one wildcard acceptor
 node dist/trade_capture/app.js multi-client --clients 3 --timeout 25
 ```
+
+## Dynamic acceptor — counterparties known only at logon
+
+`dynamic` mode is the one to run if you want to see what `TargetCompID: "*"` buys
+you. The acceptor is configured as a venue and nothing else:
+
+```json
+{
+  "SenderCompId": "venue",
+  "TargetCompID": "*"
+}
+```
+
+No counterparty appears anywhere in its configuration. Four then connect — three at
+startup, and `prop-desk-d` eight seconds later, with no restart and no config
+change:
+
+```
+wildcard acceptor: binding session identity to peer SenderCompID 'hedge-fund-a'
+accepted counterparty 'hedge-fund-a' (user js-client) - session is now venue -> hedge-fund-a
+...
+  >>> previously unseen counterparty 'prop-desk-d' is connecting now
+wildcard acceptor: binding session identity to peer SenderCompID 'prop-desk-d'
+```
+
+and the venue ends the run holding one persisted session per counterparty it met:
+
+```
+  the venue now holds a session store per counterparty it met:
+    FIX4.4-venue-hedge-fund-a.seqnums     [15 : 4]
+    FIX4.4-venue-market-maker-b.seqnums   [16 : 4]
+    FIX4.4-venue-prop-desk-d.seqnums      [15 : 4]
+    FIX4.4-venue-retail-broker-c.seqnums  [14 : 4]
+
+  none of those names appear anywhere in the acceptor configuration.
+```
+
+Each of those is a full FIX session: its own sequence numbers, its own resend
+history, recovered independently on reconnect. That is the difference between a
+wildcard that only fixes the outbound header and one that binds a real identity —
+the acceptor defers building its `SessionId` and store until the Logon tells it who
+the peer is.
+
+Bring your own names:
+
+```bash
+node dist/trade_capture/app.js dynamic --counterparties acme-capital,zeta-trading
+node dist/trade_capture/app.js dynamic --late-join-after 0     # disable the late joiner
+```
+
+Note the demo's `onLogon` does nothing but log. There is no `addCompIdMapping` call
+and no per-counterparty wiring — adopting the identity is the engine's job.
 
 ## Multiple clients on one acceptor
 
@@ -119,6 +175,7 @@ asserting on the persisted sequence files afterwards.
 ./scripts/test-scenarios.sh server-bounce      # server restarts, both recover from store
 ./scripts/test-scenarios.sh broker-reset       # server forces ResetSeqNumFlag=Y
 ./scripts/test-scenarios.sh multi-client       # 3 clients, 3 identities, 3 stores
+./scripts/test-scenarios.sh dynamic            # unknown counterparties adopted at logon
 ./scripts/test-scenarios.sh stale-transport    # half-open socket reconnect (jspurefix#153)
 ./scripts/test-scenarios.sh all
 ```
@@ -134,11 +191,6 @@ forget), so on restart the client sees a sequence number below what it has alrea
 recorded and drops the session. This reproduces on published jspurefix 5.8.5 too,
 so it is not a regression from the multi-client work — it needs a separate fix in
 the engine's store flush path.
-
-> **Note:** `multi-client` and `stale-transport` need the wildcard `TargetCompID`
-> and session registry support added to jspurefix after 5.8.5. Until that is
-> released, build the engine locally and install it with `npm run use:local` (see
-> below).
 
 ## Working against an unpublished jspurefix
 
@@ -179,6 +231,7 @@ data/session/
   recovery-*.json           — recovery mode configs (file store, no reset)
   broker-reset-*.json       — broker-reset mode configs (server forces reset)
   multi-client-*.json       — multi-client configs (acceptor uses TargetCompID "*")
+  dynamic-*.json            — dynamic acceptor configs (venue + unknown counterparties)
 
 scripts/
   test-scenarios.sh         — recovery and multi-client scenario runner

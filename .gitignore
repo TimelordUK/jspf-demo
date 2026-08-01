@@ -73,4 +73,5 @@ store/
 
 # local jspurefix tarball builds
 *.tgz
-jsfix.test_client_*.txt
+# generated FIX logs - one per session, named after the application/counterparty
+jsfix.*.txt

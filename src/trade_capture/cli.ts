@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 
-export type SessionMode = 'reset' | 'recovery' | 'broker-reset' | 'multi-client' | 'clear'
+export type SessionMode = 'reset' | 'recovery' | 'broker-reset' | 'multi-client' | 'dynamic' | 'clear'
 
 export interface CliOptions {
   mode: SessionMode
@@ -12,7 +12,25 @@ export interface CliOptions {
   clients: number
   /** override the store directory from the session config */
   store?: string
+  /** dynamic mode: the counterparties to connect, none known to the acceptor */
+  counterparties: string[]
+  /** dynamic mode: seconds before the late joiner connects, 0 to disable */
+  lateJoinAfter: number
 }
+
+/**
+ * Counterparties for `dynamic` mode.  Deliberately unrelated names - the point is
+ * that the acceptor is configured with TargetCompID '*' and has never heard of any
+ * of them until they log on.
+ */
+export const defaultCounterparties: string[] = [
+  'hedge-fund-a',
+  'market-maker-b',
+  'retail-broker-c'
+]
+
+/** joins after the others, to show the acceptor needs no restart to take a new one */
+export const lateCounterparty = 'prop-desk-d'
 
 /**
  * Config file pairs for each session mode.
@@ -36,6 +54,13 @@ const modeConfigs: Record<Exclude<SessionMode, 'clear'>, { initiator: string, ac
   'multi-client': {
     initiator: '../../data/session/multi-client-initiator.json',
     acceptor: '../../data/session/multi-client-acceptor.json'
+  },
+  // same wildcard acceptor, but the counterparties are unrelated names the venue
+  // has never been configured with - the point of the mode is that it does not
+  // need to know them in advance
+  dynamic: {
+    initiator: '../../data/session/dynamic-initiator.json',
+    acceptor: '../../data/session/dynamic-acceptor.json'
   }
 }
 
@@ -46,7 +71,9 @@ export const storeDirectories: string[] = [
   'store/broker-initiator',
   'store/broker-acceptor',
   'store/multi-initiator',
-  'store/multi-acceptor'
+  'store/multi-acceptor',
+  'store/dynamic-initiator',
+  'store/dynamic-acceptor'
 ]
 
 export function getConfigPaths (opts: CliOptions): { client: string | null, server: string | null } {
@@ -58,7 +85,7 @@ export function getConfigPaths (opts: CliOptions): { client: string | null, serv
   }
 }
 
-const validModes: SessionMode[] = ['reset', 'recovery', 'broker-reset', 'multi-client', 'clear']
+const validModes: SessionMode[] = ['reset', 'recovery', 'broker-reset', 'multi-client', 'dynamic', 'clear']
 
 export function parseCliOptions (argv?: string[]): CliOptions {
   const program = new Command()
@@ -70,6 +97,8 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     .option('--client', 'run initiator (client) only')
     .option('--server', 'run acceptor (server) only')
     .option('--clients <n>', 'number of clients to spawn, 1-5 (multi-client acceptor testing)', parseInt)
+    .option('--counterparties <names>', 'dynamic mode: comma separated SenderCompIds to connect')
+    .option('--late-join-after <seconds>', 'dynamic mode: seconds before a previously unseen counterparty joins, 0 to disable', parseInt)
     .option('--store <dir>', 'override the store directory from the session config')
     .option('--timeout <seconds>', 'shutdown after N seconds', parseInt)
     .option('--disconnect-after <seconds>', 'disconnect client after N seconds (reconnect testing)', parseInt)
@@ -99,6 +128,15 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     process.exit(1)
   }
 
+  const counterparties: string[] = opts.counterparties
+    ? String(opts.counterparties).split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
+    : defaultCounterparties
+
+  if (counterparties.length === 0) {
+    console.error('error: --counterparties needs at least one name')
+    process.exit(1)
+  }
+
   return {
     mode,
     client: opts.client ?? false,
@@ -106,6 +144,8 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     timeout: opts.timeout,
     disconnectAfter: opts.disconnectAfter,
     clients,
-    store: opts.store
+    store: opts.store,
+    counterparties,
+    lateJoinAfter: opts.lateJoinAfter ?? 8
   }
 }

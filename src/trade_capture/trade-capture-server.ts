@@ -69,6 +69,15 @@ export class TradeCaptureServer extends AsciiSession {
   }
 
   protected onLogon (view: MsgView, user: string, password: string): boolean {
+    // On a wildcard acceptor (TargetCompID '*') this is the moment the session
+    // learns who it is talking to.  The engine has already adopted the peer's
+    // SenderCompID as this session's target by the time onLogon runs, so the
+    // description below is this session's own - not the listener's template.
+    const peer = view.getTyped(MsgTag.SenderCompID) as string
+    const isWildcardVenue = this.config.description.TargetCompID === peer
+    this.logger.info(isWildcardVenue
+      ? `accepted counterparty '${peer}' (user ${user}) - session is now ${this.config.description.SenderCompId} -> ${peer}`
+      : `accepted logon from '${peer}' (user ${user})`)
     return true
   }
 

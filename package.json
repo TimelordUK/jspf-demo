@@ -23,6 +23,7 @@
     "recovery:client": "node dist/trade_capture/app.js recovery --client",
     "broker-reset": "node dist/trade_capture/app.js broker-reset",
     "multi-client": "node dist/trade_capture/app.js multi-client --clients 3",
+    "dynamic": "node dist/trade_capture/app.js dynamic",
     "clear": "node dist/trade_capture/app.js clear",
     "scenarios": "bash scripts/test-scenarios.sh",
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -36,7 +37,7 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^15.0.0",
-    "jspurefix": "^5.8.5",
+    "jspurefix": "^5.9.1",
     "reflect-metadata": "^0.2.2"
   },
   "overrides": {
