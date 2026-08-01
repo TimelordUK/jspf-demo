@@ -70,3 +70,7 @@ data/fix_repo
 /jsfix.test_server.txt
 capture.txt
 store/
+
+# local jspurefix tarball builds
+*.tgz
+jsfix.test_client_*.txt

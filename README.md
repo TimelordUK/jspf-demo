@@ -33,11 +33,15 @@ The demo supports three session modes that control store type and sequence reset
 | `reset` (default) | memory | Y (both) | 2344 | Sequences reset on every logon. Stateless. |
 | `recovery` | file | N (both) | 2345 | Sequences persist across restarts. Resume where left off. |
 | `broker-reset` | file | server=Y, client=N | 2346 | Server forces reset (simulates daily broker reset). Client wants resume but respects server reset. |
+| `multi-client` | file | N (both) | 2345 | Acceptor runs `TargetCompID: "*"`. Several clients share one listener, each with its own identity and store. |
+| `clear` | — | — | — | Delete every store directory and exit. |
 
 ```bash
 npm run tcp-tc              # reset mode (default)
 npm run recovery            # recovery mode (file store)
 npm run broker-reset        # broker-reset mode
+npm run multi-client        # three clients against one wildcard acceptor
+npm run clear               # wipe the stores
 ```
 
 In recovery and broker-reset modes, a QuickFix-compatible file store is created under `store/` with `.seqnums`, `.body`, and `.header` files.
@@ -48,11 +52,13 @@ In recovery and broker-reset modes, a QuickFix-compatible file store is created 
 Usage: jspf-demo [options] [mode]
 
 Arguments:
-  mode                          session mode: reset (default), recovery, broker-reset
+  mode                          session mode: reset, recovery, broker-reset, multi-client, clear
 
 Options:
   --client                      run initiator (client) only
   --server                      run acceptor (server) only
+  --clients <n>                 number of clients to spawn, 1-5 (multi-client acceptor testing)
+  --store <dir>                 override the store directory from the session config
   --timeout <seconds>           shutdown after N seconds
   --disconnect-after <seconds>  disconnect client after N seconds (reconnect testing)
   -h, --help                    display help for command
@@ -73,7 +79,80 @@ node dist/trade_capture/app.js --disconnect-after 5
 
 # Server-only with timeout
 node dist/trade_capture/app.js recovery --server --timeout 30
+
+# Three clients against one wildcard acceptor
+node dist/trade_capture/app.js multi-client --clients 3 --timeout 25
 ```
+
+## Multiple clients on one acceptor
+
+`multi-client` mode is the reference setup for an acceptor serving several
+counterparties. The acceptor config sets `"TargetCompID": "*"`, so it does not have
+to know its counterparties in advance — each accepted connection adopts the
+`SenderCompID` from that client's Logon, and from it derives:
+
+- its own `SessionId`, and therefore its own store files under `store/multi-acceptor/`
+- its own entry in the engine's session registry
+- its own log prefix, e.g. `[test_server:init-comp_2:FixSession]`
+
+Each spawned client gets a `_1.._n` suffix on its `SenderCompId` so the acceptor
+sees genuinely distinct counterparties. The server log carries a census line
+whenever the population changes:
+
+```
+[acceptor] info: acceptor census: transports=3 [1@::1:55641 up 1s, 2@::1:55642 up 0s, 3@::1:55643 up 0s]
+                 sessions=2 [FIX4.4-accept-comp-init-comp_1, FIX4.4-accept-comp-init-comp_2]
+```
+
+If the same counterparty reconnects while its previous socket is still open — the
+half-open socket case in
+[jspurefix#153](https://github.com/TimelordUK/jspurefix/issues/153) — the registry
+stops the stale session so only one remains per CompID pair.
+
+## Test scenarios
+
+`scripts/test-scenarios.sh` drives the demo through the recovery cases that matter,
+asserting on the persisted sequence files afterwards.
+
+```bash
+./scripts/test-scenarios.sh client-bounce      # client restarts, server keeps running
+./scripts/test-scenarios.sh server-bounce      # server restarts, both recover from store
+./scripts/test-scenarios.sh broker-reset       # server forces ResetSeqNumFlag=Y
+./scripts/test-scenarios.sh multi-client       # 3 clients, 3 identities, 3 stores
+./scripts/test-scenarios.sh stale-transport    # half-open socket reconnect (jspurefix#153)
+./scripts/test-scenarios.sh all
+```
+
+`stale-transport` uses `scripts/stale-transport.js`, which plays the counterparty
+directly over a raw socket: it logs on, then stops participating without ever
+closing. Killing a process would not reproduce this — the kernel still closes its
+file descriptors — so the script holds the socket open itself.
+
+**Known failure:** `server-bounce` does not currently pass. The acceptor's persisted
+sender sequence lags what it actually sent (message store writes are fire and
+forget), so on restart the client sees a sequence number below what it has already
+recorded and drops the session. This reproduces on published jspurefix 5.8.5 too,
+so it is not a regression from the multi-client work — it needs a separate fix in
+the engine's store flush path.
+
+> **Note:** `multi-client` and `stale-transport` need the wildcard `TargetCompID`
+> and session registry support added to jspurefix after 5.8.5. Until that is
+> released, build the engine locally and install it with `npm run use:local` (see
+> below).
+
+## Working against an unpublished jspurefix
+
+To test engine changes without publishing to npm:
+
+```bash
+cd ../jspurefix && npm run pack:local   # builds and packs to ../.local-packages
+cd ../jspf-demo && npm run use:local    # install that tarball
+npm run use:npm                         # go back to the registry version
+```
+
+A tarball rather than `npm link` on purpose: a symlinked dependency loads its own
+copy of `reflect-metadata` and `tsyringe`, and two decorator metadata registries
+means tsyringe silently fails to resolve anything registered through the other one.
 
 ## Session resilience
 
@@ -99,6 +178,11 @@ data/session/
   test-acceptor.json        — reset mode server config
   recovery-*.json           — recovery mode configs (file store, no reset)
   broker-reset-*.json       — broker-reset mode configs (server forces reset)
+  multi-client-*.json       — multi-client configs (acceptor uses TargetCompID "*")
+
+scripts/
+  test-scenarios.sh         — recovery and multi-client scenario runner
+  stale-transport.js        — raw-socket counterparty for the half-open reconnect case
 ```
 
 ## Parsing FIX logs
