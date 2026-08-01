@@ -70,3 +70,8 @@ data/fix_repo
 /jsfix.test_server.txt
 capture.txt
 store/
+
+# local jspurefix tarball builds
+*.tgz
+# generated FIX logs - one per session, named after the application/counterparty
+jsfix.*.txt

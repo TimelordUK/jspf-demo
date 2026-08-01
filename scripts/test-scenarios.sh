@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # jspf-demo Test Scenarios
-# Usage: ./scripts/test-scenarios.sh [client-bounce|server-bounce|broker-reset|all]
+# Usage: ./scripts/test-scenarios.sh [client-bounce|server-bounce|broker-reset|multi-client|dynamic|stale-transport|all]
 #
 
 set -e
@@ -31,6 +31,9 @@ CLIENT_SEQNUMS="$STORE_DIR/initiator/FIX4.4-init-comp-accept-comp.seqnums"
 SERVER_SEQNUMS="$STORE_DIR/acceptor/FIX4.4-accept-comp-init-comp.seqnums"
 BROKER_CLIENT_SEQNUMS="$STORE_DIR/broker-initiator/FIX4.4-init-comp-accept-comp.seqnums"
 BROKER_SERVER_SEQNUMS="$STORE_DIR/broker-acceptor/FIX4.4-accept-comp-init-comp.seqnums"
+MULTI_CLIENT_STORE="$STORE_DIR/multi-initiator"
+MULTI_SERVER_STORE="$STORE_DIR/multi-acceptor"
+DYNAMIC_SERVER_STORE="$STORE_DIR/dynamic-acceptor"
 
 get_sender_seq() { [ -f "$1" ] && awk -F':' '{print $1}' "$1" | tr -d ' ' || echo "0"; }
 
@@ -203,11 +206,130 @@ test_broker_reset() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Multiple counterparties on one acceptor.  The acceptor runs TargetCompID '*', so
+# each accepted connection takes its identity - and its own store - from whichever
+# client logs on.  Before per-session isolation landed, all of them shared one
+# parse buffer, one description and one store file.
+test_multi_client() {
+    print_banner "SCENARIO: Multi Client Acceptor"
+    echo "Three clients connect concurrently to one wildcard acceptor."
+
+    print_header "STEP 1: Clean Start"
+    clean_dir "$MULTI_CLIENT_STORE" "$MULTI_SERVER_STORE"
+    print_success "Store cleaned"
+
+    print_header "STEP 2: Run acceptor with 3 clients"
+    run_quiet $APP multi-client --clients 3 --timeout $((LONG_TIMEOUT * 2))
+
+    print_header "STEP 3: Verify each client got its own session"
+    local server_stores client_stores
+    server_stores=$(ls "$MULTI_SERVER_STORE"/*.seqnums 2>/dev/null | wc -l)
+    client_stores=$(ls "$MULTI_CLIENT_STORE"/*.seqnums 2>/dev/null | wc -l)
+    print_info "acceptor side stores: $server_stores"
+    print_info "client side stores:   $client_stores"
+    for f in "$MULTI_SERVER_STORE"/*.seqnums; do
+        [ -f "$f" ] && echo "  $(basename "$f"): $(cat "$f")"
+    done
+
+    print_header "RESULT"
+    if [ "$server_stores" -eq 3 ] && [ "$client_stores" -eq 3 ]; then
+        print_success "Three independent sessions, three independent stores - no cross talk"
+        return 0
+    else
+        print_error "Expected 3 stores per side, got server=$server_stores client=$client_stores"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# github.com/TimelordUK/jspurefix/issues/153 - a counterparty whose socket has gone
+# half open reconnects.  The acceptor must stop the stale session and keep the new
+# one, rather than running both against a single store.
+test_stale_transport() {
+    print_banner "SCENARIO: Stale Transport Replacement (issue #153)"
+    echo "Client goes silent without closing, then reconnects with the same CompID."
+
+    print_header "STEP 1: Clean Start"
+    clean_dir "$MULTI_SERVER_STORE"
+    print_success "Store cleaned"
+
+    print_header "STEP 2: Start acceptor"
+    local log="$STORE_DIR/stale-transport-server.log"
+    $APP multi-client --server --timeout $((LONG_TIMEOUT * 2)) > "$log" 2>&1 &
+    local server_pid=$!
+    sleep 3
+
+    print_header "STEP 3: Drive the half open reconnect"
+    node scripts/stale-transport.js || true
+
+    print_step "Stopping server..."
+    kill $server_pid 2>/dev/null; wait $server_pid 2>/dev/null || true
+
+    print_header "STEP 4: Verify the acceptor replaced the stale session"
+    local replaced remaining
+    replaced=$(grep -c "FOUND EXISTING SESSION" "$log" || true)
+    remaining=$(grep "acceptor census" "$log" | tail -1)
+    print_info "stale sessions replaced: $replaced"
+    print_info "final $remaining"
+
+    print_header "RESULT"
+    if [ "$replaced" -ge 1 ]; then
+        print_success "Stale session was stopped and replaced by the new connection"
+        grep -E "FOUND EXISTING SESSION|requestStop|successfully unregistered" "$log" | sed 's/^/  /'
+        return 0
+    else
+        print_error "Acceptor did not replace the stale session"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# A venue configured with TargetCompID '*' and no knowledge of any counterparty.
+# Four unrelated names log on - one of them well after the venue started - and each
+# ends up with its own SessionId and its own persisted store.
+test_dynamic() {
+    print_banner "SCENARIO: Dynamic Acceptor (TargetCompID '*')"
+    echo "Counterparties the venue was never configured with log on and are adopted."
+
+    print_header "STEP 1: Clean Start"
+    clean_dir "$DYNAMIC_SERVER_STORE" "$STORE_DIR/dynamic-initiator"
+    print_success "Store cleaned"
+
+    print_header "STEP 2: Run venue with three counterparties, a fourth joining later"
+    local log="$STORE_DIR/dynamic.log"
+    $APP dynamic --timeout $((LONG_TIMEOUT * 2)) > "$log" 2>&1 || true
+
+    print_header "STEP 3: Which identities did the venue adopt?"
+    grep -oE "binding session identity to peer SenderCompID '[^']*'" "$log" | sed "s/^/  /" || true
+
+    print_header "STEP 4: Stores written, one per counterparty"
+    local stores
+    stores=$(ls "$DYNAMIC_SERVER_STORE"/*.seqnums 2>/dev/null | wc -l)
+    for f in "$DYNAMIC_SERVER_STORE"/*.seqnums; do
+        [ -f "$f" ] && echo "  $(basename "$f"): $(cat "$f")"
+    done
+
+    print_header "RESULT"
+    local configured
+    configured=$(grep -c "hedge-fund-a\|prop-desk-d" data/session/dynamic-acceptor.json || true)
+    if [ "$stores" -eq 4 ] && [ "$configured" -eq 0 ]; then
+        print_success "Four counterparties adopted, four stores, none named in the acceptor config"
+        return 0
+    else
+        print_error "Expected 4 stores and 0 configured names, got stores=$stores configured=$configured"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 run_all() {
     local failures=0
     test_client_bounce || failures=$((failures + 1))
     test_server_bounce || failures=$((failures + 1))
     test_broker_reset  || failures=$((failures + 1))
+    test_multi_client  || failures=$((failures + 1))
+    test_dynamic       || failures=$((failures + 1))
+    test_stale_transport || failures=$((failures + 1))
     echo ""
     print_banner "SUMMARY"
     if [ $failures -eq 0 ]; then
@@ -223,6 +345,9 @@ case "$SCENARIO" in
     client-bounce)  test_client_bounce ;;
     server-bounce)  test_server_bounce ;;
     broker-reset)   test_broker_reset ;;
+    multi-client)   test_multi_client ;;
+    dynamic)        test_dynamic ;;
+    stale-transport) test_stale_transport ;;
     all)            run_all ;;
-    *)  echo "Unknown: $SCENARIO (valid: client-bounce, server-bounce, broker-reset, all)"; exit 1 ;;
+    *)  echo "Unknown: $SCENARIO (valid: client-bounce, server-bounce, broker-reset, multi-client, dynamic, stale-transport, all)"; exit 1 ;;
 esac
