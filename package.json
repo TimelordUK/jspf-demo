@@ -37,7 +37,7 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^15.0.0",
-    "jspurefix": "^5.9.1",
+    "jspurefix": "^5.9.2",
     "reflect-metadata": "^0.2.2"
   },
   "overrides": {
@@ -45,13 +45,13 @@
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/lodash": "^4.17.24",
-    "@types/node": "^26.1.0",
+    "@types/lodash": "^4.17.25",
+    "@types/node": "^26.1.2",
     "@types/sax": "^1.2.7",
     "eslint": "^9.39.4",
     "eslint-config-love": "^151.0.0",
     "madge": "^8.0.0",
-    "ts-jest": "^29.4.11",
+    "ts-jest": "^29.4.12",
     "typescript": "^6.0.3"
   }
 }

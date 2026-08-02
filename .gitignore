@@ -75,3 +75,4 @@ store/
 *.tgz
 # generated FIX logs - one per session, named after the application/counterparty
 jsfix.*.txt
+.idea/jsLinters/eslint.xml
