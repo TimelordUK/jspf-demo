@@ -25,7 +25,14 @@ print_error()   { echo -e "${RED}✗ $1${NC}"; }
 print_info()    { echo -e "${BLUE}  $1${NC}"; }
 
 run_quiet() { "$@" > /dev/null 2>&1; }
-run_quiet_bg() { "$@" > /dev/null 2>&1 & echo $!; }
+# Start a background job and publish its pid in BG_PID.
+#
+# Deliberately not assigned via command substitution: that runs the function
+# in a subshell, so $! is a pid the calling shell does not own.  `wait` on it fails
+# immediately with "not a child of this shell" - which silently turned every
+# "wait for the server to finish" into a no-op, and left servers running that the
+# next step then tried to start a second copy of on the same port.
+run_quiet_bg() { "$@" > /dev/null 2>&1 & BG_PID=$!; }
 
 CLIENT_SEQNUMS="$STORE_DIR/initiator/FIX4.4-init-comp-accept-comp.seqnums"
 SERVER_SEQNUMS="$STORE_DIR/acceptor/FIX4.4-accept-comp-init-comp.seqnums"
@@ -59,7 +66,7 @@ test_client_bounce() {
     print_success "Store cleaned"
 
     print_header "STEP 2: Start Server (long running)"
-    SERVER_PID=$(run_quiet_bg $APP recovery --server --timeout $((LONG_TIMEOUT * 3)))
+    run_quiet_bg $APP recovery --server --timeout $((LONG_TIMEOUT * 3)); SERVER_PID=$BG_PID
     sleep 2
 
     print_header "STEP 3: First Client Session (${SHORT_TIMEOUT}s)"
@@ -110,9 +117,9 @@ test_server_bounce() {
     print_success "Store cleaned"
 
     print_header "STEP 2: Initial Session (server runs ${LONG_TIMEOUT}s)"
-    SERVER_PID=$(run_quiet_bg $APP recovery --server --timeout $LONG_TIMEOUT)
+    run_quiet_bg $APP recovery --server --timeout $LONG_TIMEOUT; SERVER_PID=$BG_PID
     sleep 2
-    CLIENT_PID=$(run_quiet_bg $APP recovery --client --timeout $((LONG_TIMEOUT + 5)))
+    run_quiet_bg $APP recovery --client --timeout $((LONG_TIMEOUT + 5)); CLIENT_PID=$BG_PID
 
     print_info "Waiting for server to timeout..."
     wait $SERVER_PID 2>/dev/null || true
@@ -129,9 +136,9 @@ test_server_bounce() {
     sleep 3
 
     print_header "STEP 5: Restart Both"
-    SERVER_PID=$(run_quiet_bg $APP recovery --server --timeout $LONG_TIMEOUT)
+    run_quiet_bg $APP recovery --server --timeout $LONG_TIMEOUT; SERVER_PID=$BG_PID
     sleep 2
-    CLIENT_PID=$(run_quiet_bg $APP recovery --client --timeout $SHORT_TIMEOUT)
+    run_quiet_bg $APP recovery --client --timeout $SHORT_TIMEOUT; CLIENT_PID=$BG_PID
 
     wait $SERVER_PID 2>/dev/null || true
     wait $CLIENT_PID 2>/dev/null || true
@@ -166,7 +173,7 @@ test_broker_reset() {
     print_success "Store cleaned"
 
     print_header "STEP 2: First Session — Build Up Sequences"
-    SERVER_PID=$(run_quiet_bg $APP broker-reset --server --timeout $LONG_TIMEOUT)
+    run_quiet_bg $APP broker-reset --server --timeout $LONG_TIMEOUT; SERVER_PID=$BG_PID
     sleep 2
     run_quiet $APP broker-reset --client --timeout $SHORT_TIMEOUT
     sleep 1
@@ -182,7 +189,7 @@ test_broker_reset() {
     sleep 3
 
     print_header "STEP 5: Reconnect — Server Forces Reset"
-    SERVER_PID=$(run_quiet_bg $APP broker-reset --server --timeout $LONG_TIMEOUT)
+    run_quiet_bg $APP broker-reset --server --timeout $LONG_TIMEOUT; SERVER_PID=$BG_PID
     sleep 2
     run_quiet $APP broker-reset --client --timeout $SHORT_TIMEOUT
     sleep 1

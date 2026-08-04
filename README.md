@@ -180,17 +180,15 @@ asserting on the persisted sequence files afterwards.
 ./scripts/test-scenarios.sh all
 ```
 
+All six pass. If you are adding a scenario, note `run_quiet_bg` publishes the pid in
+`BG_PID` rather than echoing it — assigning it via command substitution runs the
+function in a subshell, so `$!` is a pid the calling shell does not own and `wait`
+on it fails instantly instead of blocking.
+
 `stale-transport` uses `scripts/stale-transport.js`, which plays the counterparty
 directly over a raw socket: it logs on, then stops participating without ever
 closing. Killing a process would not reproduce this — the kernel still closes its
 file descriptors — so the script holds the socket open itself.
-
-**Known failure:** `server-bounce` does not currently pass. The acceptor's persisted
-sender sequence lags what it actually sent (message store writes are fire and
-forget), so on restart the client sees a sequence number below what it has already
-recorded and drops the session. This reproduces on published jspurefix 5.8.5 too,
-so it is not a regression from the multi-client work — it needs a separate fix in
-the engine's store flush path.
 
 ## Working against an unpublished jspurefix
 
