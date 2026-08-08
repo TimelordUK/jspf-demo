@@ -1,0 +1,28 @@
+{
+  "application": {
+    "reconnectSeconds": 10,
+    "type": "initiator",
+    "name": "custom_logon_client",
+    "tcp": {
+      "host": "localhost",
+      "port": 2348
+    },
+    "protocol": "ascii",
+    "dictionary": "qf44"
+  },
+  "Username": "js-client",
+  "Password": "pwd-client",
+  "ResetSeqNumFlag": true,
+  "HeartBtInt": 30,
+  "SenderCompId": "init-comp",
+  "TargetCompID": "accept-comp",
+  "TargetSubID": "fix",
+  "BeginString": "FIX4.4",
+
+  "Logon": {
+    "Account": "TVKD_001",
+    "DefaultApplVerID": "9",
+    "MaxMessageSize": 4096,
+    "NotAFixField": "watch this one get dropped"
+  }
+}

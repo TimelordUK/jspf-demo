@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 
-export type SessionMode = 'reset' | 'recovery' | 'broker-reset' | 'multi-client' | 'dynamic' | 'clear'
+export type SessionMode =
+  'reset' | 'recovery' | 'broker-reset' | 'multi-client' | 'dynamic' | 'custom-logon' | 'clear'
 
 export interface CliOptions {
   mode: SessionMode
@@ -61,6 +62,12 @@ const modeConfigs: Record<Exclude<SessionMode, 'clear'>, { initiator: string, ac
   dynamic: {
     initiator: '../../data/session/dynamic-initiator.json',
     acceptor: '../../data/session/dynamic-acceptor.json'
+  },
+  // a Logon carrying tags standard FIX 4.4 does not have, against a dictionary
+  // generated at start up to admit them - jspurefix issues #93, #39, #96
+  'custom-logon': {
+    initiator: '../../data/session/custom-logon-initiator.json',
+    acceptor: '../../data/session/custom-logon-acceptor.json'
   }
 }
 
@@ -85,7 +92,8 @@ export function getConfigPaths (opts: CliOptions): { client: string | null, serv
   }
 }
 
-const validModes: SessionMode[] = ['reset', 'recovery', 'broker-reset', 'multi-client', 'dynamic', 'clear']
+const validModes: SessionMode[] =
+  ['reset', 'recovery', 'broker-reset', 'multi-client', 'dynamic', 'custom-logon', 'clear']
 
 export function parseCliOptions (argv?: string[]): CliOptions {
   const program = new Command()

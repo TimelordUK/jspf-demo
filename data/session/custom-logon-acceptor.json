@@ -1,0 +1,20 @@
+{
+  "application": {
+    "type": "acceptor",
+    "name": "custom_logon_server",
+    "tcp": {
+      "host": "localhost",
+      "port": 2348
+    },
+    "protocol": "ascii",
+    "dictionary": "qf44"
+  },
+  "Username": "js-server",
+  "Password": "pwd-server",
+  "ResetSeqNumFlag": true,
+  "HeartBtInt": 30,
+  "SenderCompId": "accept-comp",
+  "TargetCompID": "init-comp",
+  "TargetSubID": "fix",
+  "BeginString": "FIX4.4"
+}
