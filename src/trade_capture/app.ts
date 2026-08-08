@@ -5,27 +5,48 @@ import * as path from 'path'
 
 import { TradeCaptureServer } from './trade-capture-server'
 import { TradeCaptureClient } from './trade-capture-client'
-import { EngineFactory, IJsFixConfig, ISessionDescription, SessionLauncher } from 'jspurefix'
+import { CustomLogonClient, CustomLogonMsgFactory } from './custom-logon'
+import { brokerLogonFields, ensureBrokerDictionary } from './broker-dictionary'
+import {
+  AsciiSession, EngineFactory, IJsFixConfig, ISessionDescription, ISessionMsgFactory, SessionLauncher
+} from 'jspurefix'
 import { CliOptions, getConfigPaths, lateCounterparty, parseCliOptions, storeDirectories } from './cli'
 
 class AppLauncher extends SessionLauncher {
   public constructor (
     client: string | ISessionDescription | null,
-    server: string | ISessionDescription | null
+    server: string | ISessionDescription | null,
+    /** custom-logon mode: an initiator whose Logon is built by its own factory */
+    private readonly bespokeLogon: boolean = false
   ) {
     super(client, server)
     this.root = __dirname
   }
 
+  /**
+   * Supply this application's own session message factory - the one hook needed to
+   * build a Logon the engine could not have derived from the description.  Return
+   * null (the default) for the stock factory.
+   *
+   * Constant extra fields do not need this at all: name them under "Logon" in the
+   * session description.  A factory is for values known only at run time.
+   */
+  protected override makeSessionMsgFactory (
+    description: ISessionDescription): ISessionMsgFactory | null {
+    if (!this.bespokeLogon || !this.isInitiator(description)) return null
+    return new CustomLogonMsgFactory(description)
+  }
+
   protected override makeFactory (config: IJsFixConfig): EngineFactory {
     const isInitiator = this.isInitiator(config.description)
+    const Client = this.bespokeLogon ? CustomLogonClient : TradeCaptureClient
     return {
       // take the config handed to us rather than closing over the launcher's.  An
       // acceptor resolves each accepted connection from its own scope, so this is
       // that session's own description, store and message factory - without it
       // every client on a multi-client acceptor would share one identity.
-      makeSession: (sessionConfig: IJsFixConfig) => isInitiator
-        ? new TradeCaptureClient(sessionConfig)
+      makeSession: (sessionConfig: IJsFixConfig): AsciiSession => isInitiator
+        ? new Client(sessionConfig)
         : new TradeCaptureServer(sessionConfig)
     } as EngineFactory
   }
@@ -117,6 +138,40 @@ function reportDynamicOutcome (acceptorPath: string, store?: string): void {
   console.log('')
 }
 
+/**
+ * custom-logon mode.  Generates a dictionary that declares the counterparty's tags on
+ * Logon and returns its absolute path - the second half of the problem, and the half
+ * people usually miss.  Putting a field on the Logon object achieves nothing if the
+ * dictionary has no field of that name on that message: the encoder has no tag to
+ * write it to, so it drops it.
+ */
+function describeCustomLogonRun (): string {
+  const dictionary = ensureBrokerDictionary(path.join(__dirname, '../../data'))
+  console.log('')
+  console.log('  custom logon')
+  console.log('  ────────────')
+  console.log('  the counterparty wants tags on Logon that standard FIX 4.4 does not carry:')
+  brokerLogonFields.forEach(f => { console.log(`    ${f.name} (${f.tag})`) })
+  console.log('')
+  console.log('  three things make that work, and all three are needed:')
+  console.log('    1. a dictionary declaring those fields on Logon   (generated above)')
+  console.log('    2. a "Logon" block in the session description     (custom-logon-initiator.json)')
+  console.log('    3. a factory, for what only run time knows        (CustomLogonMsgFactory)')
+  console.log('')
+  console.log("  the block also names 'NotAFixField', which no dictionary declares - watch the")
+  console.log('  engine say so rather than dropping it in silence.')
+  console.log('')
+  return dictionary
+}
+
+/** point a description at a dictionary, by absolute path - see broker-dictionary.ts */
+function withDictionary (description: any, dictionary?: string): ISessionDescription {
+  if (dictionary) {
+    description.application.dictionary = dictionary
+  }
+  return description as ISessionDescription
+}
+
 function clearStores (): void {
   storeDirectories.forEach(dir => {
     const full = path.join(__dirname, '../..', dir)
@@ -135,6 +190,9 @@ function launch (opts: CliOptions): void {
   if (opts.store) console.log(`store override: ${opts.store}`)
   if (opts.mode === 'dynamic' && paths.server) describeDynamicRun(opts, paths.server)
 
+  const bespokeLogon = opts.mode === 'custom-logon'
+  const dictionary = bespokeLogon ? describeCustomLogonRun() : undefined
+
   if (opts.disconnectAfter != null) {
     TradeCaptureClient.disconnectAfterSeconds = opts.disconnectAfter
   }
@@ -144,7 +202,8 @@ function launch (opts: CliOptions): void {
   // The acceptor gets its own launcher so it keeps listening after any one client
   // goes away - a launcher given both roles ends when its client ends.
   if (paths.server) {
-    launchers.push(new AppLauncher(null, withStore(loadDescription(paths.server), opts.store)))
+    const description = withDictionary(withStore(loadDescription(paths.server), opts.store), dictionary)
+    launchers.push(new AppLauncher(null, description, bespokeLogon))
   }
 
   const dynamic = opts.mode === 'dynamic'
@@ -157,7 +216,9 @@ function launch (opts: CliOptions): void {
       })
     } else {
       for (let i = 1; i <= opts.clients; ++i) {
-        launchers.push(new AppLauncher(clientDescription(paths.client, i, opts.clients, opts.store), null))
+        const description = withDictionary(
+          clientDescription(paths.client, i, opts.clients, opts.store), dictionary)
+        launchers.push(new AppLauncher(description, null, bespokeLogon))
       }
     }
   }

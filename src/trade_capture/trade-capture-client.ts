@@ -126,7 +126,8 @@ export class TradeCaptureClient extends AsciiSession {
       return
     }
     this.hasSentTradeRequest = true
-    const tcr: Partial<ITradeCaptureReportRequest> = TradeFactory.tradeCaptureReportRequest('all-trades', new Date())
+    // typed from the QuickFIX interfaces, which is the dictionary these sessions load
+    const tcr = TradeFactory.tradeCaptureReportRequest('all-trades', new Date())
     this.send(MsgType.TradeCaptureReportRequest, tcr)
     const logoutSeconds = 32
     this.logger.info(`will logout after ${logoutSeconds}`)

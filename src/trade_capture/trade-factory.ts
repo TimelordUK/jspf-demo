@@ -13,6 +13,17 @@ import {
 
 import { TradeReportTransType } from 'jspurefix/dist/types/FIXML50SP2'
 
+/**
+ * These sessions load the *QuickFIX* FIX 4.4 dictionary, which models TrdCapDtGrp as
+ * a component wrapping a NoDates group - where the FIX repository models it as a flat
+ * array.  The outbound request has to match the dictionary the encoder is using, so
+ * that one message is typed from the QuickFIX interfaces rather than the repository
+ * ones used everywhere else here.
+ */
+import {
+  ITradeCaptureReportRequest as IQfTradeCaptureReportRequest
+} from 'jspurefix/dist/types/FIX4.4/quickfix/trade_capture_report_request'
+
 export class TradeFactory {
   private nextTradeId: number = 100000
   private nextExecId: number = 600000
@@ -35,7 +46,7 @@ export class TradeFactory {
     }
   }
 
-  public static tradeCaptureReportRequest (requestId: string, tradeDate: Date): Partial<ITradeCaptureReportRequest> {
+  public static tradeCaptureReportRequest (requestId: string, tradeDate: Date): Partial<IQfTradeCaptureReportRequest> {
     const d0 = tradeDate
     const d1 = new Date(tradeDate.getTime())
     d1.setDate(d1.getDate() + 1)
@@ -43,14 +54,15 @@ export class TradeFactory {
       TradeRequestID: 'all-trades',
       TradeRequestType: TradeRequestType.AllTrades,
       SubscriptionRequestType: SubscriptionRequestType.SnapshotAndUpdates,
-      TrdCapDtGrp: [
-        {
-          TransactTime: d0
-        },
-        {
-          TransactTime: d1
-        }
-      ]
+      // sent as a flat array this resolved to no field of the message and was quietly
+      // dropped - the dates never reached the wire.  jspurefix now warns when that
+      // happens, which is how it was found.
+      TrdCapDtGrp: {
+        NoDates: [
+          { TransactTime: d0 },
+          { TransactTime: d1 }
+        ]
+      }
     }
   }
 
