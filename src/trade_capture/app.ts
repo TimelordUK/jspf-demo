@@ -197,59 +197,118 @@ function launch (opts: CliOptions): void {
     TradeCaptureClient.disconnectAfterSeconds = opts.disconnectAfter
   }
 
-  const launchers: AppLauncher[] = []
-
   // The acceptor gets its own launcher so it keeps listening after any one client
   // goes away - a launcher given both roles ends when its client ends.
-  if (paths.server) {
-    const description = withDictionary(withStore(loadDescription(paths.server), opts.store), dictionary)
-    launchers.push(new AppLauncher(null, description, bespokeLogon))
-  }
+  const acceptor: AppLauncher | null = paths.server
+    ? new AppLauncher(
+      null, withDictionary(withStore(loadDescription(paths.server), opts.store), dictionary), bespokeLogon)
+    : null
 
   const dynamic = opts.mode === 'dynamic'
+  const clientLaunchers: AppLauncher[] = []
 
   if (paths.client) {
     const clientConfigPath = paths.client
     if (dynamic) {
       opts.counterparties.forEach(name => {
-        launchers.push(new AppLauncher(counterpartyDescription(clientConfigPath, name, opts.store), null))
+        clientLaunchers.push(new AppLauncher(counterpartyDescription(clientConfigPath, name, opts.store), null))
       })
     } else {
       for (let i = 1; i <= opts.clients; ++i) {
         const description = withDictionary(
           clientDescription(paths.client, i, opts.clients, opts.store), dictionary)
-        launchers.push(new AppLauncher(description, null, bespokeLogon))
+        clientLaunchers.push(new AppLauncher(description, null, bespokeLogon))
       }
     }
+  }
+
+  // stagger the starts so the acceptor is listening first, and so a multi-client
+  // run does not arrive as one connection storm
+  let slot = 0
+  // the acceptor's own run only ends when its listener closes, below
+  const acceptorRun = acceptor ? start(acceptor, slot++ * staggerMs) : null
+  // one entry per client this run will ever have, each settling when that client's
+  // session ends - the late joiner takes its slot now, though it connects later
+  const clientRuns: Array<Promise<void>> = clientLaunchers.map(async l => { await start(l, slot++ * staggerMs) })
+
+  // a counterparty the venue has never seen, arriving well after it started - no
+  // restart, no config change, it simply logs on and gets its own session
+  if (dynamic && paths.client && opts.lateJoinAfter > 0) {
+    const clientPath = paths.client
+    clientRuns.push((async () => {
+      await delay(opts.lateJoinAfter * 1000)
+      console.log('')
+      console.log(`  >>> previously unseen counterparty '${lateCounterparty}' is connecting now`)
+      console.log('')
+      await start(new AppLauncher(counterpartyDescription(clientPath, lateCounterparty, opts.store), null), 0)
+    })())
   }
 
   if (opts.timeout != null) {
     setTimeout(() => {
       if (dynamic && paths.server) reportDynamicOutcome(paths.server, opts.store)
       console.log(`timeout after ${opts.timeout}s, shutting down`)
-      process.exit(0)
+      // close the listener properly rather than letting the exit tear it down, but
+      // still guarantee what --timeout promises: this process is gone at N seconds
+      acceptor?.stop()
+      setTimeout(() => { process.exit(0) }, 250)
     }, opts.timeout * 1000)
   }
 
-  // a counterparty the venue has never seen, arriving well after it started - no
-  // restart, no config change, it simply logs on and gets its own session
-  if (dynamic && paths.client && opts.lateJoinAfter > 0) {
-    const clientPath = paths.client
-    setTimeout(() => {
-      console.log('')
-      console.log(`  >>> previously unseen counterparty '${lateCounterparty}' is connecting now`)
-      console.log('')
-      new AppLauncher(counterpartyDescription(clientPath, lateCounterparty, opts.store), null).exec()
-    }, opts.lateJoinAfter * 1000)
+  if (acceptor && acceptorRun) {
+    shutdownWhenClientsDone(acceptor, acceptorRun, clientRuns, opts, paths, dynamic)
   }
+}
 
-  // stagger the starts so the acceptor is listening first, and so a multi-client
-  // run does not arrive as one connection storm
-  launchers.forEach((launcher, i) => {
-    setTimeout(() => {
-      launcher.exec()
-    }, i * 300)
-  })
+/** start a launcher after a delay, resolving when whatever it started has ended */
+async function start (launcher: AppLauncher, delayMs: number): Promise<void> {
+  await delay(delayMs)
+  try {
+    await launcher.run()
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function delay (ms: number): Promise<void> {
+  await new Promise<void>(resolve => { setTimeout(resolve, ms) })
+}
+
+const staggerMs = 300
+
+/**
+ * An acceptor outlives any one client - that is the whole reason it has a launcher of
+ * its own, and why nothing closes its listener when a session ends.  But once every
+ * client this run will ever have has finished there is nothing left to serve, and the
+ * listening socket is then the only thing holding the process open: the run appears to
+ * hang long after the logs say everything shut down.
+ *
+ * So close it, and node exits by itself.  Two runs are deliberately left listening:
+ *   --server, where the clients are other processes and this one is the venue
+ *   --disconnect-after, whose entire point is to watch the acceptor survive a client
+ * both of which say so rather than leaving anyone guessing.
+ */
+function shutdownWhenClientsDone (
+  acceptor: AppLauncher,
+  acceptorRun: Promise<void>,
+  clientRuns: Array<Promise<void>>,
+  opts: CliOptions,
+  paths: { server: string | null },
+  dynamic: boolean): void {
+  if (clientRuns.length === 0 || opts.disconnectAfter != null) {
+    console.log('acceptor keeps listening - ctrl-c, or --timeout <seconds>, to end the run')
+    return
+  }
+  void (async () => {
+    await Promise.all(clientRuns)
+    console.log('all clients finished, stopping acceptor')
+    acceptor.stop()
+    // the launcher's run resolves once the listener has actually closed, by which
+    // time each accepted session has written its sequence numbers - report after
+    // that, or the venue appears to hold an empty store for its last counterparty
+    await acceptorRun
+    if (dynamic && paths.server) reportDynamicOutcome(paths.server, opts.store)
+  })()
 }
 
 const opts = parseCliOptions()
