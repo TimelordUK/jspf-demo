@@ -117,6 +117,33 @@ node dist/trade_capture/app.js recovery --server --timeout 30
 node dist/trade_capture/app.js multi-client --clients 3 --timeout 25
 ```
 
+### When a run ends
+
+A FIX acceptor is meant to outlive its counterparties, so nothing closes its listener
+when a session ends — and a listening socket keeps node alive on its own, however
+quiet the log has gone. Every mode here therefore says which it is doing:
+
+- **both roles in one process** (the default for every mode) — when every client this
+  run will ever have has logged out, there is nothing left to serve, so the demo
+  closes the listener and the process ends by itself. `dynamic` waits for its late
+  joiner too, then prints what the venue ended up holding.
+
+  ```
+  all clients finished, stopping acceptor
+  [acceptor] info: acceptor closed.
+  ```
+
+- **`--server`, or `--disconnect-after`** — the acceptor is deliberately left
+  listening: in the first case the clients are other processes, and in the second the
+  whole point is to watch the acceptor survive a client going away.
+
+  ```
+  acceptor keeps listening - ctrl-c, or --timeout <seconds>, to end the run
+  ```
+
+`--timeout <seconds>` still means what it says in either case: the listener is closed
+properly and the process exits at N seconds.
+
 ## Dynamic acceptor — counterparties known only at logon
 
 `dynamic` mode is the one to run if you want to see what `TargetCompID: "*"` buys
