@@ -1,0 +1,22 @@
+{
+  "application": {
+    "reconnectSeconds": 10,
+    "type": "initiator",
+    "name": "skeleton_client",
+    "tcp": {
+      "host": "localhost",
+      "port": 2349
+    },
+    "protocol": "ascii",
+    "dictionary": "qf44"
+  },
+  "Username": "js-client",
+  "Password": "pwd-client",
+  "EncryptMethod": 0,
+  "ResetSeqNumFlag": true,
+  "HeartBtInt": 10,
+  "SenderCompId": "skeleton-client",
+  "TargetCompID": "skeleton-server",
+  "TargetSubID": "fix",
+  "BeginString": "FIX4.4"
+}
