@@ -1,0 +1,22 @@
+{
+  "application": {
+    "type": "acceptor",
+    "name": "skeleton_server",
+    "tcp": {
+      "host": "localhost",
+      "port": 2349,
+      "keepAliveMs": 10000
+    },
+    "protocol": "ascii",
+    "dictionary": "qf44"
+  },
+  "Username": "js-server",
+  "Password": "pwd-server",
+  "EncryptMethod": 0,
+  "ResetSeqNumFlag": true,
+  "HeartBtInt": 10,
+  "SenderCompId": "skeleton-server",
+  "TargetCompID": "*",
+  "TargetSubID": "fix",
+  "BeginString": "FIX4.4"
+}

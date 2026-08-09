@@ -36,6 +36,7 @@ The demo supports several session modes, controlling store type, sequence reset 
 | `multi-client` | file | N (both) | 2345 | Acceptor runs `TargetCompID: "*"`. Several clients share one listener, each with its own identity and store. |
 | `dynamic` | file | N (both) | 2347 | Same wildcard acceptor, but the counterparties are unrelated names it has never been configured with — including one that joins after startup. |
 | `custom-logon` | memory | Y (both) | 2348 | A Logon carrying tags standard FIX 4.4 does not have, against a dictionary generated at startup to admit them. |
+| `skeleton` | memory | Y (both) | 2349 | Logon and heartbeats, no application messages. The baseline the other modes are measured against, and the first thing to point at a broker. |
 | `clear` | — | — | — | Delete every store directory and exit. |
 
 ```bash
@@ -45,6 +46,8 @@ npm run broker-reset        # broker-reset mode
 npm run multi-client        # three clients against one wildcard acceptor
 npm run dynamic             # counterparties the venue has never heard of
 npm run custom-logon        # a Logon the counterparty asked for
+npm run skeleton            # logon and heartbeat, nothing else
+npm run skeleton:clients    # two skeleton clients on one acceptor
 npm run clear               # wipe the stores
 ```
 
@@ -83,17 +86,20 @@ The full treatment is in the engine's [docs/custom-logon.md](https://github.com/
 Usage: jspf-demo [options] [mode]
 
 Arguments:
-  mode                          session mode: reset, recovery, broker-reset, multi-client, dynamic, custom-logon, clear
+  mode                          session mode: reset, recovery, broker-reset, multi-client, dynamic, custom-logon, skeleton, clear
 
 Options:
   --client                      run initiator (client) only
   --server                      run acceptor (server) only
   --clients <n>                 number of clients to spawn, 1-5 (multi-client acceptor testing)
   --store <dir>                 override the store directory from the session config
+  --session <path>              session description JSON to use instead of the mode config, with --client or --server
   --counterparties <names>      dynamic mode: comma separated SenderCompIds to connect
   --late-join-after <seconds>   dynamic mode: seconds before an unseen counterparty joins (0 disables)
   --timeout <seconds>           shutdown after N seconds
   --disconnect-after <seconds>  disconnect client after N seconds (reconnect testing)
+  --heap-every <seconds>        print a gc/heap row every N seconds, 0 to disable (skeleton: 30)
+  --no-fix-log                  skeleton mode: do not write the raw FIX log
   -h, --help                    display help for command
 ```
 
@@ -115,6 +121,9 @@ node dist/trade_capture/app.js recovery --server --timeout 30
 
 # Three clients against one wildcard acceptor
 node dist/trade_capture/app.js multi-client --clients 3 --timeout 25
+
+# Two heartbeat-only clients on one acceptor, with a gc/heap row every 10s
+node dist/trade_capture/app.js skeleton --clients 2 --heap-every 10 --timeout 60
 ```
 
 ### When a run ends
@@ -143,6 +152,82 @@ quiet the log has gone. Every mode here therefore says which it is doing:
 
 `--timeout <seconds>` still means what it says in either case: the listener is closed
 properly and the process exits at N seconds.
+
+`skeleton` is the one mode with no natural end — its clients never log out, so a run
+keeps going until ctrl-c or `--timeout`. That is the point of it.
+
+## Skeleton — a session and nothing else
+
+`skeleton` is the smallest thing that is still a FIX session. Both sides log on,
+then hold the connection up with heartbeats. No security definitions, no trade
+capture, no timers of our own — one class, `SkeletonSession`, runs both roles,
+because with no application layer there is nothing left for the roles to differ on.
+
+```bash
+npm run skeleton                                     # client and server, in process
+node dist/trade_capture/app.js skeleton --clients 2  # two clients, one acceptor
+npm run skeleton:server                              # terminal 1
+npm run skeleton:client                              # terminal 2
+```
+
+Everything that reaches the wire is a session message, which is the whole claim:
+
+```
+8=FIX4.4|9=0000129|35=A|49=skeleton-client_1|56=skeleton-server|34=1|...|141=Y|553=js-client|554=pwd-client|10=226|
+8=FIX4.4|9=0000129|35=A|49=skeleton-server|56=skeleton-client_1|34=1|...|141=Y|553=js-server|554=pwd-server|10=022|
+8=FIX4.4|9=0000116|35=0|49=skeleton-client_1|56=skeleton-server|34=2|...|112=Sun, 09 Aug 2026 13:21:50 GMT|10=002|
+8=FIX4.4|9=0000116|35=0|49=skeleton-server|56=skeleton-client_1|34=2|...|112=Sun, 09 Aug 2026 13:21:50 GMT|10=002|
+```
+
+The acceptor is a wildcard (`"TargetCompID": "*"`) so `--clients n` needs no further
+configuration — each client suffixes its `SenderCompId` with `_1.._n` and the
+acceptor adopts each as a session of its own, exactly as in `multi-client`, minus
+the traffic.
+
+### Pointing it at a broker
+
+This is the mode to run first against a counterparty's UAT endpoint. Before any
+message handling is worth writing, you want to know whether the session logs on,
+stays up overnight, and comes back after the link drops — and none of that involves
+an application message.
+
+```bash
+cp data/session/skeleton-initiator.json my-broker.json
+# edit host, port, SenderCompId, TargetCompID, HeartBtInt, credentials
+node dist/trade_capture/app.js skeleton --client --session ./my-broker.json
+```
+
+`--session` replaces the mode's config for the one role being run, so it needs
+`--client` or `--server`. Add `--disconnect-after 30` to watch the reconnect path
+without a second process to kill; the session instance survives the drop and
+`onReady` runs again on the way back up.
+
+If the broker wants tags on the Logon that FIX 4.4 does not carry, that is
+[custom-logon](#custom-logon), and the two compose — a `Logon` block and a
+dictionary in your own session JSON.
+
+### A baseline to measure against
+
+The other reason for the mode: whatever a skeleton run costs is what the engine
+costs. `--heap-every <seconds>` prints V8's collector activity and where the heap
+sits, defaulting to 30s in skeleton mode and off everywhere else — run it in both
+modes and the difference is your application, not the session layer.
+
+```
+  [heap]  time │ minor  major   incr │  gc pause │       rss      heap │     heap Δ
+  ─────────────┼─────────────────────┼───────────┼─────────────────────┼───────────
+  [heap] 00:10 │    +5     +1     +1 │   25.1 ms │  154.8 MB   95.4 MB │  +18165 KB
+  [heap] 00:20 │    +0     +1     +1 │    4.1 ms │  153.6 MB   95.4 MB │     -19 KB
+
+  [heap] after 00:25: 5 minor, 2 major, 2 incremental, 29.1 ms in gc, rss 153.1 MB, heap 95.8 MB
+```
+
+Kinds are V8's, not the CLR's generations the [C# demo](https://github.com/TimelordUK/purefix-standalone-demo)
+reports: minor is a scavenge of new space, major a full mark-compact, incremental a
+step of one. The first row is startup — dictionary parsing dominates it. What
+matters is the rows after it, where a steady session should show no collections at
+all between heartbeats. `--no-fix-log` drops the raw FIX log if you want a run that
+touches no disk.
 
 ## Dynamic acceptor — counterparties known only at logon
 
@@ -233,10 +318,11 @@ asserting on the persisted sequence files afterwards.
 ./scripts/test-scenarios.sh multi-client       # 3 clients, 3 identities, 3 stores
 ./scripts/test-scenarios.sh dynamic            # unknown counterparties adopted at logon
 ./scripts/test-scenarios.sh stale-transport    # half-open socket reconnect (jspurefix#153)
+./scripts/test-scenarios.sh skeleton           # 2 sessions, heartbeats, no app messages
 ./scripts/test-scenarios.sh all
 ```
 
-All six pass. If you are adding a scenario, note `run_quiet_bg` publishes the pid in
+All seven pass. If you are adding a scenario, note `run_quiet_bg` publishes the pid in
 `BG_PID` rather than echoing it — assigning it via command substitution runs the
 function in a subshell, so `$!` is a pid the calling shell does not own and `wait`
 on it fails instantly instead of blocking.
@@ -278,6 +364,10 @@ src/trade_capture/
   trade-capture-client.ts   — FIX initiator session handler
   trade-capture-server.ts   — FIX acceptor session handler
   trade-factory.ts          — synthetic trade data generator
+  custom-logon.ts           — initiator whose Logon is built by its own factory
+  broker-dictionary.ts      — generates a dictionary declaring the broker's Logon tags
+  skeleton.ts               — logon and heartbeat only, both roles
+  heap-report.ts            — periodic gc/heap rows, see --heap-every
 
 data/session/
   test-initiator.json       — reset mode client config
@@ -286,6 +376,8 @@ data/session/
   broker-reset-*.json       — broker-reset mode configs (server forces reset)
   multi-client-*.json       — multi-client configs (acceptor uses TargetCompID "*")
   dynamic-*.json            — dynamic acceptor configs (venue + unknown counterparties)
+  custom-logon-*.json       — custom-logon configs (extra tags on the Logon)
+  skeleton-*.json           — skeleton configs (wildcard acceptor, memory store)
 
 scripts/
   test-scenarios.sh         — recovery and multi-client scenario runner

@@ -1,7 +1,11 @@
+import * as fs from 'fs'
+import * as path from 'path'
+
 import { Command } from 'commander'
 
 export type SessionMode =
-  'reset' | 'recovery' | 'broker-reset' | 'multi-client' | 'dynamic' | 'custom-logon' | 'clear'
+  'reset' | 'recovery' | 'broker-reset' | 'multi-client' | 'dynamic' | 'custom-logon' |
+  'skeleton' | 'clear'
 
 export interface CliOptions {
   mode: SessionMode
@@ -13,10 +17,16 @@ export interface CliOptions {
   clients: number
   /** override the store directory from the session config */
   store?: string
+  /** replace the mode's config for the single role being run - see --session */
+  session?: string
   /** dynamic mode: the counterparties to connect, none known to the acceptor */
   counterparties: string[]
   /** dynamic mode: seconds before the late joiner connects, 0 to disable */
   lateJoinAfter: number
+  /** seconds between heap/gc report rows, 0 to print none */
+  heapEvery: number
+  /** skeleton mode: write the raw FIX log, cleared by --no-fix-log */
+  fixLog: boolean
 }
 
 /**
@@ -68,6 +78,13 @@ const modeConfigs: Record<Exclude<SessionMode, 'clear'>, { initiator: string, ac
   'custom-logon': {
     initiator: '../../data/session/custom-logon-initiator.json',
     acceptor: '../../data/session/custom-logon-acceptor.json'
+  },
+  // logon and heartbeat, nothing else.  A baseline to measure the other modes
+  // against, and the first thing to run against a broker's UAT endpoint.  The
+  // acceptor is a wildcard so --clients works without further configuration
+  skeleton: {
+    initiator: '../../data/session/skeleton-initiator.json',
+    acceptor: '../../data/session/skeleton-acceptor.json'
   }
 }
 
@@ -86,14 +103,18 @@ export const storeDirectories: string[] = [
 export function getConfigPaths (opts: CliOptions): { client: string | null, server: string | null } {
   if (opts.mode === 'clear') return { client: null, server: null }
   const configs = modeConfigs[opts.mode]
+  // --session names the one role being run, and is taken as given - it is how you
+  // point a run at a counterparty this repository knows nothing about
+  const initiator = opts.session ?? configs.initiator
+  const acceptor = opts.session ?? configs.acceptor
   return {
-    client: opts.server ? null : configs.initiator,
-    server: opts.client ? null : configs.acceptor
+    client: opts.server ? null : initiator,
+    server: opts.client ? null : acceptor
   }
 }
 
 const validModes: SessionMode[] =
-  ['reset', 'recovery', 'broker-reset', 'multi-client', 'dynamic', 'custom-logon', 'clear']
+  ['reset', 'recovery', 'broker-reset', 'multi-client', 'dynamic', 'custom-logon', 'skeleton', 'clear']
 
 export function parseCliOptions (argv?: string[]): CliOptions {
   const program = new Command()
@@ -108,8 +129,11 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     .option('--counterparties <names>', 'dynamic mode: comma separated SenderCompIds to connect')
     .option('--late-join-after <seconds>', 'dynamic mode: seconds before a previously unseen counterparty joins, 0 to disable', parseInt)
     .option('--store <dir>', 'override the store directory from the session config')
+    .option('--session <path>', 'session description JSON to use instead of the mode config, with --client or --server')
     .option('--timeout <seconds>', 'shutdown after N seconds', parseInt)
     .option('--disconnect-after <seconds>', 'disconnect client after N seconds (reconnect testing)', parseInt)
+    .option('--heap-every <seconds>', 'print a gc/heap row every N seconds, 0 to disable (skeleton: 30)', parseInt)
+    .option('--no-fix-log', 'skeleton mode: do not write the raw FIX log')
 
   program.parse(argv ?? process.argv)
   const opts = program.opts()
@@ -136,6 +160,26 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     process.exit(1)
   }
 
+  // one path can only describe one side, so the run has to be one sided
+  let session: string | undefined
+  if (opts.session != null) {
+    if (!opts.client && !opts.server) {
+      console.error('error: --session needs --client or --server, it describes one side of the session')
+      process.exit(1)
+    }
+    session = path.resolve(String(opts.session))
+    if (!fs.existsSync(session)) {
+      console.error(`error: --session file not found: ${session}`)
+      process.exit(1)
+    }
+  }
+
+  const heapEvery = opts.heapEvery ?? (mode === 'skeleton' ? 30 : 0)
+  if (!Number.isInteger(heapEvery) || heapEvery < 0) {
+    console.error('error: --heap-every must be a whole number of seconds, 0 to disable')
+    process.exit(1)
+  }
+
   const counterparties: string[] = opts.counterparties
     ? String(opts.counterparties).split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
     : defaultCounterparties
@@ -153,7 +197,10 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     disconnectAfter: opts.disconnectAfter,
     clients,
     store: opts.store,
+    session,
     counterparties,
-    lateJoinAfter: opts.lateJoinAfter ?? 8
+    lateJoinAfter: opts.lateJoinAfter ?? 8,
+    heapEvery,
+    fixLog: opts.fixLog ?? true
   }
 }

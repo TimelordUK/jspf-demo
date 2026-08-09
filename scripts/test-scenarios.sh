@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # jspf-demo Test Scenarios
-# Usage: ./scripts/test-scenarios.sh [client-bounce|server-bounce|broker-reset|multi-client|dynamic|stale-transport|all]
+# Usage: ./scripts/test-scenarios.sh [client-bounce|server-bounce|broker-reset|multi-client|dynamic|stale-transport|skeleton|all]
 #
 
 set -e
@@ -329,6 +329,53 @@ test_dynamic() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Logon, heartbeats, nothing else.  The assertion is about what is absent: every
+# message on the wire must be a session message, because the mode has no
+# application layer to produce anything else.
+test_skeleton() {
+    print_banner "SCENARIO: Skeleton (logon and heartbeat only)"
+    echo "Two clients on one acceptor hold sessions up with no application messages."
+
+    print_header "STEP 1: Clean Start"
+    rm -f jsfix.skeleton_client_1.txt jsfix.skeleton_client_2.txt jsfix.skeleton_server.txt
+    mkdir -p "$STORE_DIR"
+    print_success "Previous FIX logs removed"
+
+    print_header "STEP 2: Run two skeleton clients against one acceptor"
+    local log="$STORE_DIR/skeleton.log"
+    # long enough for at least one heartbeat interval to elapse on both sessions
+    $APP skeleton --clients 2 --timeout $((LONG_TIMEOUT * 2 + 5)) --heap-every $LONG_TIMEOUT > "$log" 2>&1 || true
+
+    print_header "STEP 3: Identities adopted by the acceptor"
+    grep -oE "binding session identity to peer SenderCompID '[^']*'" "$log" | sed 's/^/  /' || true
+
+    print_header "STEP 4: What went on the wire"
+    local types heartbeats ready unexpected
+    types=$(grep -ohE "\|35=[^|]*\|" jsfix.skeleton_client_*.txt | sort -u | tr -d '|' | tr '\n' ' ')
+    heartbeats=$(grep -c "35=0" jsfix.skeleton_client_1.txt || true)
+    # session level message types only: Logon, Heartbeat, TestRequest, ResendRequest,
+    # Reject, SequenceReset, Logout.  Anything else came from an application.
+    unexpected=$(grep -ohE "\|35=[^|]*\|" jsfix.skeleton_client_*.txt | grep -vcE "\|35=[A0-5]\|" || true)
+    print_info "message types seen: $types"
+    print_info "heartbeats in client 1 log: $heartbeats"
+    print_info "application messages: $unexpected"
+
+    print_header "STEP 5: Heap report"
+    grep -E "^\s+\[heap\]" "$log" | tail -3 | sed 's/^/  /' || true
+
+    print_header "RESULT"
+    # two initiator sessions and the two the acceptor made for them
+    ready=$(grep -c "session ready - heartbeat only" "$log" || true)
+    if [ "$ready" -ge 4 ] && [ "$heartbeats" -ge 2 ] && [ "$unexpected" -eq 0 ]; then
+        print_success "Four sessions up, heartbeats flowing, not one application message"
+        return 0
+    else
+        print_error "Expected ready>=4 heartbeats>=2 app-msgs=0, got ready=$ready heartbeats=$heartbeats app-msgs=$unexpected"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 run_all() {
     local failures=0
     test_client_bounce || failures=$((failures + 1))
@@ -337,6 +384,7 @@ run_all() {
     test_multi_client  || failures=$((failures + 1))
     test_dynamic       || failures=$((failures + 1))
     test_stale_transport || failures=$((failures + 1))
+    test_skeleton      || failures=$((failures + 1))
     echo ""
     print_banner "SUMMARY"
     if [ $failures -eq 0 ]; then
@@ -355,6 +403,7 @@ case "$SCENARIO" in
     multi-client)   test_multi_client ;;
     dynamic)        test_dynamic ;;
     stale-transport) test_stale_transport ;;
+    skeleton)       test_skeleton ;;
     all)            run_all ;;
-    *)  echo "Unknown: $SCENARIO (valid: client-bounce, server-bounce, broker-reset, multi-client, dynamic, stale-transport, all)"; exit 1 ;;
+    *)  echo "Unknown: $SCENARIO (valid: client-bounce, server-bounce, broker-reset, multi-client, dynamic, stale-transport, skeleton, all)"; exit 1 ;;
 esac

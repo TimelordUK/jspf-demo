@@ -6,21 +6,31 @@ import * as path from 'path'
 import { TradeCaptureServer } from './trade-capture-server'
 import { TradeCaptureClient } from './trade-capture-client'
 import { CustomLogonClient, CustomLogonMsgFactory } from './custom-logon'
+import { SkeletonSession } from './skeleton'
+import { startHeapReport } from './heap-report'
 import { brokerLogonFields, ensureBrokerDictionary } from './broker-dictionary'
 import {
   AsciiSession, EngineFactory, IJsFixConfig, ISessionDescription, ISessionMsgFactory, SessionLauncher
 } from 'jspurefix'
-import { CliOptions, getConfigPaths, lateCounterparty, parseCliOptions, storeDirectories } from './cli'
+import {
+  CliOptions, getConfigPaths, lateCounterparty, parseCliOptions, SessionMode, storeDirectories
+} from './cli'
 
 class AppLauncher extends SessionLauncher {
+  /** custom-logon mode: an initiator whose Logon is built by its own factory */
+  private readonly bespokeLogon: boolean
+  /** skeleton mode: both roles run the same do-nothing session */
+  private readonly skeleton: boolean
+
   public constructor (
     client: string | ISessionDescription | null,
     server: string | ISessionDescription | null,
-    /** custom-logon mode: an initiator whose Logon is built by its own factory */
-    private readonly bespokeLogon: boolean = false
+    mode: SessionMode
   ) {
     super(client, server)
     this.root = __dirname
+    this.bespokeLogon = mode === 'custom-logon'
+    this.skeleton = mode === 'skeleton'
   }
 
   /**
@@ -39,7 +49,12 @@ class AppLauncher extends SessionLauncher {
 
   protected override makeFactory (config: IJsFixConfig): EngineFactory {
     const isInitiator = this.isInitiator(config.description)
-    const Client = this.bespokeLogon ? CustomLogonClient : TradeCaptureClient
+    // skeleton runs the same class on both sides: with no application layer there
+    // is nothing left for the roles to differ on
+    const Client = this.skeleton
+      ? SkeletonSession
+      : this.bespokeLogon ? CustomLogonClient : TradeCaptureClient
+    const Server = this.skeleton ? SkeletonSession : TradeCaptureServer
     return {
       // take the config handed to us rather than closing over the launcher's.  An
       // acceptor resolves each accepted connection from its own scope, so this is
@@ -47,13 +62,15 @@ class AppLauncher extends SessionLauncher {
       // every client on a multi-client acceptor would share one identity.
       makeSession: (sessionConfig: IJsFixConfig): AsciiSession => isInitiator
         ? new Client(sessionConfig)
-        : new TradeCaptureServer(sessionConfig)
+        : new Server(sessionConfig)
     } as EngineFactory
   }
 }
 
+// resolve rather than join: mode configs are relative to dist/trade_capture, but a
+// --session override has already been made absolute against the working directory
 function loadDescription (relativePath: string): any {
-  return JSON.parse(fs.readFileSync(path.join(__dirname, relativePath), 'utf8'))
+  return JSON.parse(fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8'))
 }
 
 function withStore (description: any, store?: string): ISessionDescription {
@@ -139,6 +156,35 @@ function reportDynamicOutcome (acceptorPath: string, store?: string): void {
 }
 
 /**
+ * skeleton mode.  Says what is deliberately absent, because the interesting thing
+ * about the mode is everything it does not do.
+ */
+function describeSkeletonRun (opts: CliOptions): void {
+  console.log('')
+  console.log('  skeleton')
+  console.log('  ────────')
+  console.log('  no application messages: both sides log on and then hold the session up with')
+  console.log('  heartbeats alone.  What it costs is what the engine costs.')
+  console.log('')
+  if (opts.clients > 1) {
+    console.log(`  ${opts.clients} clients against one acceptor - it runs TargetCompID '*', so each takes`)
+    console.log('  its identity, and its own session, from whichever client logs on.')
+    console.log('')
+  }
+  console.log('  what to watch for:')
+  console.log("    'session ready - heartbeat only'   both sides are up")
+  console.log("    '35=0'                            the heartbeats, in jsfix.skeleton_*.txt")
+  if (opts.heapEvery > 0) {
+    console.log(`    '[heap]'                          gc and heap, every ${opts.heapEvery}s`)
+  }
+  console.log('')
+  console.log('  to point it at a real counterparty, copy data/session/skeleton-initiator.json,')
+  console.log('  edit the host, port and comp ids, then:')
+  console.log('    node dist/trade_capture/app.js skeleton --client --session ./my-broker.json')
+  console.log('')
+}
+
+/**
  * custom-logon mode.  Generates a dictionary that declares the counterparty's tags on
  * Logon and returns its absolute path - the second half of the problem, and the half
  * people usually miss.  Putting a field on the Logon object achieves nothing if the
@@ -188,20 +234,25 @@ function launch (opts: CliOptions): void {
 
   console.log(`mode: ${opts.mode}, client: ${paths.client != null}, server: ${paths.server != null}, clients: ${opts.clients}`)
   if (opts.store) console.log(`store override: ${opts.store}`)
+  if (opts.session) console.log(`session override: ${opts.session}`)
   if (opts.mode === 'dynamic' && paths.server) describeDynamicRun(opts, paths.server)
+  if (opts.mode === 'skeleton') describeSkeletonRun(opts)
 
   const bespokeLogon = opts.mode === 'custom-logon'
   const dictionary = bespokeLogon ? describeCustomLogonRun() : undefined
 
   if (opts.disconnectAfter != null) {
     TradeCaptureClient.disconnectAfterSeconds = opts.disconnectAfter
+    SkeletonSession.disconnectAfterSeconds = opts.disconnectAfter
   }
+  SkeletonSession.writeFixLog = opts.fixLog
+  startHeapReport(opts.heapEvery)
 
   // The acceptor gets its own launcher so it keeps listening after any one client
   // goes away - a launcher given both roles ends when its client ends.
   const acceptor: AppLauncher | null = paths.server
     ? new AppLauncher(
-      null, withDictionary(withStore(loadDescription(paths.server), opts.store), dictionary), bespokeLogon)
+      null, withDictionary(withStore(loadDescription(paths.server), opts.store), dictionary), opts.mode)
     : null
 
   const dynamic = opts.mode === 'dynamic'
@@ -211,13 +262,14 @@ function launch (opts: CliOptions): void {
     const clientConfigPath = paths.client
     if (dynamic) {
       opts.counterparties.forEach(name => {
-        clientLaunchers.push(new AppLauncher(counterpartyDescription(clientConfigPath, name, opts.store), null))
+        clientLaunchers.push(
+          new AppLauncher(counterpartyDescription(clientConfigPath, name, opts.store), null, opts.mode))
       })
     } else {
       for (let i = 1; i <= opts.clients; ++i) {
         const description = withDictionary(
           clientDescription(paths.client, i, opts.clients, opts.store), dictionary)
-        clientLaunchers.push(new AppLauncher(description, null, bespokeLogon))
+        clientLaunchers.push(new AppLauncher(description, null, opts.mode))
       }
     }
   }
@@ -240,7 +292,8 @@ function launch (opts: CliOptions): void {
       console.log('')
       console.log(`  >>> previously unseen counterparty '${lateCounterparty}' is connecting now`)
       console.log('')
-      await start(new AppLauncher(counterpartyDescription(clientPath, lateCounterparty, opts.store), null), 0)
+      await start(
+        new AppLauncher(counterpartyDescription(clientPath, lateCounterparty, opts.store), null, opts.mode), 0)
     })())
   }
 
