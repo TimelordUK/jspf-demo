@@ -42,7 +42,7 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^15.0.0",
-    "jspurefix": "^5.10.2",
+    "jspurefix": "^5.10.4",
     "reflect-metadata": "^0.2.2"
   },
   "overrides": {
@@ -51,7 +51,7 @@
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/lodash": "^4.17.25",
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.2.0",
     "@types/sax": "^1.2.7",
     "eslint": "^9.39.4",
     "eslint-config-love": "^151.0.0",

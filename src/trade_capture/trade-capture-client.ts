@@ -1,8 +1,7 @@
 import { TradeFactory } from './trade-factory'
 import { IJsFixConfig, MsgView, AsciiSession, IJsFixLogger } from 'jspurefix'
 import {
-  ITradeCaptureReport, ITradeCaptureReportRequest,
-  ITradeCaptureReportRequestAck, MsgType
+  ITradeCaptureReport, ITradeCaptureReportRequestAck, MsgType
 } from 'jspurefix/dist/types/FIX4.4/repo'
 import { ISecurityDefinition } from 'jspurefix/dist/types/FIX4.4/repo/security_definition'
 import { ISecurityDefinitionRequest } from 'jspurefix/dist/types/FIX4.4/repo/security_definition_request'
