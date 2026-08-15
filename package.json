@@ -29,6 +29,8 @@
     "skeleton:clients": "node dist/trade_capture/app.js skeleton --clients 2",
     "skeleton:server": "node dist/trade_capture/app.js skeleton --server",
     "skeleton:client": "node dist/trade_capture/app.js skeleton --client",
+    "resilient": "node dist/trade_capture/app.js skeleton --client --resilient --retry-every 3",
+    "resilient:recover": "node dist/trade_capture/app.js skeleton --resilient --retry-every 3 --drop-after 6 --timeout 25",
     "clear": "node dist/trade_capture/app.js clear",
     "scenarios": "bash scripts/test-scenarios.sh",
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -42,7 +44,7 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^15.0.0",
-    "jspurefix": "^5.10.6",
+    "jspurefix": "^5.11.0",
     "reflect-metadata": "^0.2.2"
   },
   "overrides": {

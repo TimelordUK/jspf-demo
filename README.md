@@ -97,7 +97,11 @@ Options:
   --counterparties <names>      dynamic mode: comma separated SenderCompIds to connect
   --late-join-after <seconds>   dynamic mode: seconds before an unseen counterparty joins (0 disables)
   --timeout <seconds>           shutdown after N seconds
-  --disconnect-after <seconds>  disconnect client after N seconds (reconnect testing)
+  --disconnect-after <seconds>  client stops its own session after N seconds - a deliberate stop, so nothing recovers
+  --drop-after <seconds>        acceptor drops the client after N seconds - a lost transport, which --resilient recovers from
+  --resilient                   initiator keeps trying, and re-establishes a lost connection, instead of ending with it
+  --retry-every <seconds>       --resilient: seconds between attempts (default 3)
+  --give-up-after <seconds>     --resilient: seconds of attempts before giving up (default 60)
   --heap-every <seconds>        print a gc/heap row every N seconds, 0 to disable (skeleton: 30)
   --no-fix-log                  skeleton mode: do not write the raw FIX log
   -h, --help                    display help for command
@@ -345,6 +349,60 @@ npm run use:npm                         # go back to the registry version
 A tarball rather than `npm link` on purpose: a symlinked dependency loads its own
 copy of `reflect-metadata` and `tsyringe`, and two decorator metadata registries
 means tsyringe silently fails to resolve anything registered through the other one.
+
+## Resilient initiator — watching it retry
+
+By default an initiator makes one connection and the run ends when that session does. `--resilient` (jspurefix 5.11.0+) keeps the same session across transports: losing the connection schedules another attempt instead of ending the run.
+
+Two knobs, which are the two questions anyone actually asks — how often, and for how long:
+
+```bash
+npm run resilient          # skeleton client alone, retrying every 3s
+```
+
+Nothing is listening, so the run is the retry loop by itself. This is what you want in front of you when a counterparty's endpoint is down or the port is wrong:
+
+```
+[skeleton_client:RecoveringTcpInitiator] recovery policy: connectTimeout=60s, recoveryAttempt=3s, backoffFailConnect=3s
+[skeleton_client:RecoveringTcpInitiator] connect: start initiator timeout 60
+[skeleton_client:TcpInitiator] tryConnect localhost:2349
+[skeleton_client:TcpInitiator] skeleton_client: retries 1
+[skeleton_client:TcpInitiator] skeleton_client: retries 2
+[skeleton_client:TcpInitiator] skeleton_client: retries 3
+```
+
+Start `npm run skeleton:server` in another terminal and it logs on with no restart of the client.
+
+> Those retry lines carry no reason on node 20+. A host that resolves to both `::1` and `127.0.0.1` fails as an `AggregateError`, whose own `message` is empty and whose detail sits in `errors[]` — and jspurefix logs the message.
+
+### Recovering from a dropped connection
+
+```bash
+npm run resilient:recover  # both roles, acceptor drops the client after 6s
+```
+
+```
+[skeleton_server:Skeleton] [server] dropping the client - a resilient initiator should get itself back
+[skeleton_client:RecoveringTcpInitiator] transport id 0 failed - session state 23
+[skeleton_client:RecoveringTcpInitiator] recover session transport - attempt in 3 secs
+[skeleton_client:RecoveringTcpInitiator] connect: receive new transport 0
+[skeleton_client:Skeleton] [client] session ready - heartbeat only
+```
+
+The client's `session ready` appears a second time on the **same session object** — that is the whole point of `resilient`, as against a fresh session per connection.
+
+### `--disconnect-after` and `--drop-after` are not the same thing
+
+| flag | who acts | what a resilient initiator does |
+| --- | --- | --- |
+| `--disconnect-after` | the client stops its own session | nothing — a deliberate stop is not a lost transport, so the run ends |
+| `--drop-after` | the acceptor drops the client | recovers, on the `--retry-every` schedule |
+
+That distinction is worth knowing before you conclude recovery is broken: stopping a session yourself is meant to end it.
+
+### Stopping one
+
+A resilient initiator never finishes on its own, so `--timeout` calls `stop()` on the client launchers as well as the acceptor. Before 5.11.0 there was no way to call one off — losing the transport always scheduled another attempt, and nothing cancelled that timer, so the process stayed alive retrying a counterparty you had finished with.
 
 ## Session resilience
 
