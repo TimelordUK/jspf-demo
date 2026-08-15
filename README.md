@@ -366,14 +366,24 @@ Nothing is listening, so the run is the retry loop by itself. This is what you w
 [skeleton_client:RecoveringTcpInitiator] recovery policy: connectTimeout=60s, recoveryAttempt=3s, backoffFailConnect=3s
 [skeleton_client:RecoveringTcpInitiator] connect: start initiator timeout 60
 [skeleton_client:TcpInitiator] tryConnect localhost:2349
-[skeleton_client:TcpInitiator] skeleton_client: retries 1
-[skeleton_client:TcpInitiator] skeleton_client: retries 2
-[skeleton_client:TcpInitiator] skeleton_client: retries 3
+[skeleton_client:TcpInitiator] skeleton_client: retries 1 connect ECONNREFUSED ::1:2349; connect ECONNREFUSED 127.0.0.1:2349
+[skeleton_client:TcpInitiator] skeleton_client: retries 2 connect ECONNREFUSED ::1:2349; connect ECONNREFUSED 127.0.0.1:2349
 ```
 
 Start `npm run skeleton:server` in another terminal and it logs on with no restart of the client.
 
-> Those retry lines carry no reason on node 20+. A host that resolves to both `::1` and `127.0.0.1` fails as an `AggregateError`, whose own `message` is empty and whose detail sits in `errors[]` — and jspurefix logs the message.
+Give it a short `--give-up-after` and the reason reaches the application rather than just the log — what `run()` rejects with is the socket error itself, so a caller can read its `code` as well as its message:
+
+```bash
+node dist/trade_capture/app.js skeleton --client --resilient --retry-every 2 --give-up-after 6
+```
+
+```
+skeleton_client: giving up after 6s and 2 retries, last error: connect ECONNREFUSED ::1:2349; connect ECONNREFUSED 127.0.0.1:2349
+[launcher] error: connect ECONNREFUSED ::1:2349; connect ECONNREFUSED 127.0.0.1:2349 : AggregateError [ECONNREFUSED]
+```
+
+> Needs jspurefix 5.11.1 or later (the `^5.11.0` range picks it up). Before that the message was empty: a host resolving to both `::1` and `127.0.0.1` fails as an `AggregateError`, whose own `message` is empty and whose detail sits in `errors[]`.
 
 ### Recovering from a dropped connection
 
