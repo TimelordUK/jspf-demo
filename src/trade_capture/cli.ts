@@ -27,6 +27,14 @@ export interface CliOptions {
   heapEvery: number
   /** skeleton mode: write the raw FIX log, cleared by --no-fix-log */
   fixLog: boolean
+  /** acceptor drops the client after N seconds, so the initiator loses its transport */
+  dropAfter?: number
+  /** run the initiator that re-establishes a lost transport rather than ending with it */
+  resilient: boolean
+  /** --resilient: seconds between connection attempts, and before recovering a lost one */
+  retryEvery?: number
+  /** --resilient: seconds of attempts before the initiator gives up */
+  giveUpAfter?: number
 }
 
 /**
@@ -131,9 +139,13 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     .option('--store <dir>', 'override the store directory from the session config')
     .option('--session <path>', 'session description JSON to use instead of the mode config, with --client or --server')
     .option('--timeout <seconds>', 'shutdown after N seconds', parseInt)
-    .option('--disconnect-after <seconds>', 'disconnect client after N seconds (reconnect testing)', parseInt)
+    .option('--disconnect-after <seconds>', 'client stops its own session after N seconds - a deliberate stop, so nothing recovers', parseInt)
+    .option('--drop-after <seconds>', 'acceptor drops the client after N seconds - a lost transport, which --resilient recovers from', parseInt)
     .option('--heap-every <seconds>', 'print a gc/heap row every N seconds, 0 to disable (skeleton: 30)', parseInt)
     .option('--no-fix-log', 'skeleton mode: do not write the raw FIX log')
+    .option('--resilient', 'initiator keeps trying, and re-establishes a lost connection, instead of ending with it')
+    .option('--retry-every <seconds>', '--resilient: seconds between attempts (default 3)', parseInt)
+    .option('--give-up-after <seconds>', '--resilient: seconds of attempts before giving up (default 60)', parseInt)
 
   program.parse(argv ?? process.argv)
   const opts = program.opts()
@@ -180,6 +192,30 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     process.exit(1)
   }
 
+  // the acceptor is the one doing the dropping, so there has to be one in this process
+  if (opts.dropAfter != null && opts.client === true) {
+    console.error('error: --drop-after is the acceptor dropping the client, so it cannot be used with --client')
+    process.exit(1)
+  }
+
+  const resilient: boolean = opts.resilient ?? false
+  if (!resilient && (opts.retryEvery != null || opts.giveUpAfter != null)) {
+    console.error('error: --retry-every and --give-up-after only mean anything with --resilient')
+    process.exit(1)
+  }
+  if (opts.retryEvery != null && (!Number.isInteger(opts.retryEvery) || opts.retryEvery < 1)) {
+    console.error('error: --retry-every must be a whole number of seconds, 1 or more')
+    process.exit(1)
+  }
+  if (opts.giveUpAfter != null && (!Number.isInteger(opts.giveUpAfter) || opts.giveUpAfter < 1)) {
+    console.error('error: --give-up-after must be a whole number of seconds, 1 or more')
+    process.exit(1)
+  }
+  if (resilient && opts.server === true) {
+    console.error('error: --resilient describes an initiator, so it has no meaning with --server')
+    process.exit(1)
+  }
+
   const counterparties: string[] = opts.counterparties
     ? String(opts.counterparties).split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0)
     : defaultCounterparties
@@ -195,12 +231,16 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     server: opts.server ?? false,
     timeout: opts.timeout,
     disconnectAfter: opts.disconnectAfter,
+    dropAfter: opts.dropAfter,
     clients,
     store: opts.store,
     session,
     counterparties,
     lateJoinAfter: opts.lateJoinAfter ?? 8,
     heapEvery,
-    fixLog: opts.fixLog ?? true
+    fixLog: opts.fixLog ?? true,
+    resilient,
+    retryEvery: opts.retryEvery,
+    giveUpAfter: opts.giveUpAfter
   }
 }

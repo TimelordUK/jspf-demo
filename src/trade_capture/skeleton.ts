@@ -18,6 +18,10 @@ import { AsciiSession, IJsFixConfig, IJsFixLogger, MsgView } from 'jspurefix'
 export class SkeletonSession extends AsciiSession {
   /** set from --disconnect-after, honoured by the initiator only */
   public static disconnectAfterSeconds: number | undefined
+  /** set from --drop-after, honoured by the acceptor only */
+  public static dropClientAfterSeconds: number | undefined
+  /** the drop happens once per run, not to every session the acceptor goes on to take */
+  private static hasDropped: boolean = false
   /** cleared by --no-fix-log, for a run that touches no disk */
   public static writeFixLog: boolean = true
 
@@ -77,14 +81,37 @@ export class SkeletonSession extends AsciiSession {
    * Drop the connection once, so the reconnect path gets exercised without a second
    * process to kill.  Guarded because onReady runs again on every reconnect - the
    * session instance survives, which is the behaviour being demonstrated.
+   *
+   * Which side does it matters, and the two are not interchangeable:
+   *
+   *  --disconnect-after  the client stops its own session.  A deliberate stop is not
+   *                      a lost transport, so a resilient initiator does not recover
+   *                      from it - the run ends, which is correct.
+   *  --drop-after        the acceptor drops the client.  Now the initiator's transport
+   *                      fails underneath it, which is what recovery is for.
    */
   private scheduleDisconnect (): void {
-    const after = SkeletonSession.disconnectAfterSeconds
-    if (after == null || this.role !== 'client' || this.hasScheduledDisconnect) return
+    if (this.role === 'client') {
+      this.scheduleStop(SkeletonSession.disconnectAfterSeconds,
+        'will disconnect after', 'triggering scheduled disconnect')
+      return
+    }
+    // one drop per run - otherwise every session the acceptor takes on reconnect
+    // schedules another, and the client never gets to stay up
+    if (SkeletonSession.hasDropped) return
+    const after = SkeletonSession.dropClientAfterSeconds
+    if (after == null) return
+    SkeletonSession.hasDropped = true
+    this.scheduleStop(after, 'will drop the client after',
+      'dropping the client - a resilient initiator should get itself back')
+  }
+
+  private scheduleStop (after: number | undefined, announce: string, act: string): void {
+    if (after == null || this.hasScheduledDisconnect) return
     this.hasScheduledDisconnect = true
-    this.logger.info(`will disconnect after ${after}s for reconnect testing`)
+    this.logger.info(`[${this.role}] ${announce} ${after}s`)
     setTimeout(() => {
-      this.logger.info('triggering scheduled disconnect')
+      this.logger.info(`[${this.role}] ${act}`)
       this.stop()
     }, after * 1000)
   }

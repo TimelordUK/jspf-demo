@@ -81,6 +81,35 @@ function withStore (description: any, store?: string): ISessionDescription {
 }
 
 /**
+ * Turn the initiator into one that keeps trying, and that re-establishes a lost
+ * transport rather than ending with it.  Two knobs, which are the two questions
+ * anyone actually asks: how often, and for how long.
+ *
+ * The engine's own defaults - 5s between recovery attempts, 60s before giving up -
+ * are sensible for a real session and far too slow to watch, so a demo run tries
+ * every 3s unless told otherwise.
+ */
+function withResilience (description: any, opts: CliOptions): ISessionDescription {
+  if (!opts.resilient) return description as ISessionDescription
+  const retryEvery = opts.retryEvery ?? defaultRetryEvery
+  description.application = {
+    ...description.application,
+    resilient: true,
+    // how often: paces attempts whilst connecting, and the wait before going back for
+    // a transport that has been lost
+    reconnectSeconds: retryEvery,
+    recoveryAttemptSeconds: retryEvery,
+    backoffFailConnectSeconds: retryEvery,
+    // how long: the deadline those attempts run against
+    connectTimeoutSeconds: opts.giveUpAfter ?? defaultGiveUpAfter
+  }
+  return description as ISessionDescription
+}
+
+const defaultRetryEvery = 3
+const defaultGiveUpAfter = 60
+
+/**
  * Each client in a multi-client run needs its own SenderCompId, otherwise they all
  * present the same identity and the acceptor's session registry - quite correctly -
  * stops each one as the next logs on.  Mirrors the C# demo, which suffixes
@@ -210,6 +239,45 @@ function describeCustomLogonRun (): string {
   return dictionary
 }
 
+/**
+ * resilient runs.  The interesting one is the first: with no peer to talk to, the run
+ * is nothing but the retry loop, which is exactly what you want to look at when a
+ * counterparty's endpoint is down or you have the port wrong.
+ */
+function describeResilientRun (opts: CliOptions, hasServer: boolean): void {
+  const retryEvery = opts.retryEvery ?? defaultRetryEvery
+  const giveUpAfter = opts.giveUpAfter ?? defaultGiveUpAfter
+  console.log('')
+  console.log('  resilient initiator')
+  console.log('  ───────────────────')
+  console.log('  the session outlives the transport: losing the connection schedules another')
+  console.log('  attempt rather than ending the run, and the same session resumes on the new one.')
+  console.log('')
+  console.log(`  trying every ${retryEvery}s, giving up after ${giveUpAfter}s`)
+  console.log('')
+  if (!hasServer) {
+    console.log('  nothing is listening on the other end, so this run is the retry loop by itself.')
+    console.log('  what to watch for:')
+    console.log("    'recovery policy: ...'               the settings above, as the engine read them")
+    console.log("    'connect: start initiator timeout'   a round of attempts begins")
+    console.log(`    'retries N ECONNREFUSED ...'         the attempts, one every ${retryEvery}s`)
+    console.log('')
+    console.log(`  after ${giveUpAfter}s it gives up, and the reason reaches this application: what run()`)
+    console.log('  rejects with is the socket error itself, so a caller can read its code as well')
+    console.log('  as its message.  (jspurefix 5.11.1+ - before that the message was empty, because')
+    console.log('  a host resolving to both ::1 and 127.0.0.1 fails as an AggregateError.)')
+    console.log('')
+    console.log('  start its peer in another terminal and it logs on with no restart here:')
+    console.log('    npm run skeleton:server')
+  } else {
+    console.log('  what to watch for once the connection drops:')
+    console.log("    'recover session transport - attempt in Ns'   the loss is noticed")
+    console.log("    'connect: receive new transport'              it is back")
+    console.log("    'session ready'                               a second time, same session")
+  }
+  console.log('')
+}
+
 /** point a description at a dictionary, by absolute path - see broker-dictionary.ts */
 function withDictionary (description: any, dictionary?: string): ISessionDescription {
   if (dictionary) {
@@ -237,6 +305,7 @@ function launch (opts: CliOptions): void {
   if (opts.session) console.log(`session override: ${opts.session}`)
   if (opts.mode === 'dynamic' && paths.server) describeDynamicRun(opts, paths.server)
   if (opts.mode === 'skeleton') describeSkeletonRun(opts)
+  if (opts.resilient) describeResilientRun(opts, paths.server != null)
 
   const bespokeLogon = opts.mode === 'custom-logon'
   const dictionary = bespokeLogon ? describeCustomLogonRun() : undefined
@@ -244,6 +313,9 @@ function launch (opts: CliOptions): void {
   if (opts.disconnectAfter != null) {
     TradeCaptureClient.disconnectAfterSeconds = opts.disconnectAfter
     SkeletonSession.disconnectAfterSeconds = opts.disconnectAfter
+  }
+  if (opts.dropAfter != null) {
+    SkeletonSession.dropClientAfterSeconds = opts.dropAfter
   }
   SkeletonSession.writeFixLog = opts.fixLog
   startHeapReport(opts.heapEvery)
@@ -262,13 +334,14 @@ function launch (opts: CliOptions): void {
     const clientConfigPath = paths.client
     if (dynamic) {
       opts.counterparties.forEach(name => {
-        clientLaunchers.push(
-          new AppLauncher(counterpartyDescription(clientConfigPath, name, opts.store), null, opts.mode))
+        clientLaunchers.push(new AppLauncher(
+          withResilience(counterpartyDescription(clientConfigPath, name, opts.store), opts),
+          null, opts.mode))
       })
     } else {
       for (let i = 1; i <= opts.clients; ++i) {
-        const description = withDictionary(
-          clientDescription(paths.client, i, opts.clients, opts.store), dictionary)
+        const description = withResilience(withDictionary(
+          clientDescription(paths.client, i, opts.clients, opts.store), dictionary), opts)
         clientLaunchers.push(new AppLauncher(description, null, opts.mode))
       }
     }
@@ -302,8 +375,11 @@ function launch (opts: CliOptions): void {
       if (dynamic && paths.server) reportDynamicOutcome(paths.server, opts.store)
       console.log(`timeout after ${opts.timeout}s, shutting down`)
       // close the listener properly rather than letting the exit tear it down, but
-      // still guarantee what --timeout promises: this process is gone at N seconds
+      // still guarantee what --timeout promises: this process is gone at N seconds.
+      // A resilient initiator needs telling too - it is mid retry loop, and stopping
+      // it is what cancels the pending attempt (jspurefix 5.11.0)
       acceptor?.stop()
+      clientLaunchers.forEach(l => { l.stop() })
       setTimeout(() => { process.exit(0) }, 250)
     }, opts.timeout * 1000)
   }
@@ -348,7 +424,9 @@ function shutdownWhenClientsDone (
   opts: CliOptions,
   paths: { server: string | null },
   dynamic: boolean): void {
-  if (clientRuns.length === 0 || opts.disconnectAfter != null) {
+  // a resilient client never finishes on its own - that is the point of it - so there
+  // is no "all clients done" moment to wait for, and waiting would hang the run
+  if (clientRuns.length === 0 || opts.disconnectAfter != null || opts.resilient) {
     console.log('acceptor keeps listening - ctrl-c, or --timeout <seconds>, to end the run')
     return
   }
