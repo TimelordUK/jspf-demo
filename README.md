@@ -1,6 +1,6 @@
 # jspf-demo
 
-[![Build status](https://ci.appveyor.com/api/projects/status/tae83lmapp30pgku?svg=true)](https://ci.appveyor.com/project/TimelordUK/jspf-demo)
+[![Build and Run Demo](https://github.com/TimelordUK/jspf-demo/actions/workflows/build.yml/badge.svg)](https://github.com/TimelordUK/jspf-demo/actions/workflows/build.yml)
 
 Reference application for [jspurefix](https://github.com/TimelordUK/jspurefix) — demonstrates a FIX 4.4 trade capture client and server with session resilience, persistent message stores, and reconnection support.
 
