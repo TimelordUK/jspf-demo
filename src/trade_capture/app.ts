@@ -10,11 +10,13 @@ import { SkeletonSession } from './skeleton'
 import { startHeapReport } from './heap-report'
 import { brokerLogonFields, ensureBrokerDictionary } from './broker-dictionary'
 import {
-  AsciiSession, EngineFactory, IJsFixConfig, ISessionDescription, ISessionMsgFactory, SessionLauncher
+  AsciiSession, EngineFactory, IJsFixConfig, ISessionDescription, ISessionMsgFactory,
+  JsFixLoggerFactory, SessionLauncher
 } from 'jspurefix'
 import {
   CliOptions, getConfigPaths, lateCounterparty, parseCliOptions, SessionMode, storeDirectories
 } from './cli'
+import { describeJsonLogs, makeLogFactory } from './logging'
 
 class AppLauncher extends SessionLauncher {
   /** custom-logon mode: an initiator whose Logon is built by its own factory */
@@ -25,9 +27,13 @@ class AppLauncher extends SessionLauncher {
   public constructor (
     client: string | ISessionDescription | null,
     server: string | ISessionDescription | null,
-    mode: SessionMode
+    mode: SessionMode,
+    // the third argument to SessionLauncher is where an application decides how every
+    // log line this run produces gets rendered - see logging.ts.  Omit it and the
+    // engine uses its own console factory
+    logFactory?: JsFixLoggerFactory
   ) {
-    super(client, server)
+    super(client, server, logFactory)
     this.root = __dirname
     this.bespokeLogon = mode === 'custom-logon'
     this.skeleton = mode === 'skeleton'
@@ -306,6 +312,10 @@ function launch (opts: CliOptions): void {
   if (opts.mode === 'dynamic' && paths.server) describeDynamicRun(opts, paths.server)
   if (opts.mode === 'skeleton') describeSkeletonRun(opts)
   if (opts.resilient) describeResilientRun(opts, paths.server != null)
+  if (opts.jsonLogs) describeJsonLogs()
+
+  // one factory for the whole run, so client and acceptor render the same way
+  const logFactory = makeLogFactory(opts.jsonLogs)
 
   const bespokeLogon = opts.mode === 'custom-logon'
   const dictionary = bespokeLogon ? describeCustomLogonRun() : undefined
@@ -324,7 +334,8 @@ function launch (opts: CliOptions): void {
   // goes away - a launcher given both roles ends when its client ends.
   const acceptor: AppLauncher | null = paths.server
     ? new AppLauncher(
-      null, withDictionary(withStore(loadDescription(paths.server), opts.store), dictionary), opts.mode)
+      null, withDictionary(withStore(loadDescription(paths.server), opts.store), dictionary), opts.mode,
+      logFactory)
     : null
 
   const dynamic = opts.mode === 'dynamic'
@@ -336,13 +347,13 @@ function launch (opts: CliOptions): void {
       opts.counterparties.forEach(name => {
         clientLaunchers.push(new AppLauncher(
           withResilience(counterpartyDescription(clientConfigPath, name, opts.store), opts),
-          null, opts.mode))
+          null, opts.mode, logFactory))
       })
     } else {
       for (let i = 1; i <= opts.clients; ++i) {
         const description = withResilience(withDictionary(
           clientDescription(paths.client, i, opts.clients, opts.store), dictionary), opts)
-        clientLaunchers.push(new AppLauncher(description, null, opts.mode))
+        clientLaunchers.push(new AppLauncher(description, null, opts.mode, logFactory))
       }
     }
   }
@@ -366,7 +377,8 @@ function launch (opts: CliOptions): void {
       console.log(`  >>> previously unseen counterparty '${lateCounterparty}' is connecting now`)
       console.log('')
       await start(
-        new AppLauncher(counterpartyDescription(clientPath, lateCounterparty, opts.store), null, opts.mode), 0)
+        new AppLauncher(counterpartyDescription(clientPath, lateCounterparty, opts.store), null, opts.mode,
+          logFactory), 0)
     })())
   }
 

@@ -104,6 +104,7 @@ Options:
   --give-up-after <seconds>     --resilient: seconds of attempts before giving up (default 60)
   --heap-every <seconds>        print a gc/heap row every N seconds, 0 to disable (skeleton: 30)
   --no-fix-log                  skeleton mode: do not write the raw FIX log
+  --json-logs                   emit ECS style JSON log lines for Filebeat instead of the console format
   -h, --help                    display help for command
 ```
 
@@ -232,6 +233,113 @@ step of one. The first row is startup — dictionary parsing dominates it. What
 matters is the rows after it, where a steady session should show no collections at
 all between heartbeats. `--no-fix-log` drops the raw FIX log if you want a run that
 touches no disk.
+
+## Structured logs — `--json-logs`
+
+Every log line jspurefix writes carries more than its message. **Context** is bound
+when the logger is made — which component, which application, which counterparty —
+and repeats on every line that logger writes. **Fields** are supplied per call and
+carry a value worth aggregating: a sequence number, a msgType, a count.
+
+Neither is formatted into the message, so what a run emits is a choice made once,
+and no session code changes with it. `--json-logs` makes that choice:
+
+```shell
+npm run skeleton:json                              # skeleton, 20s, JSON output
+node dist/trade_capture/app.js dynamic --json-logs # any mode takes the flag
+```
+
+Without it, the format jspurefix has emitted since it shipped:
+
+```
+2026-08-16T15:24:50.740Z [skeleton_server:Skeleton] info: [server] session ready - heartbeat only, HeartBtInt 10s
+```
+
+With it, the *same call site*:
+
+```json
+{"@timestamp":"2026-08-16T15:24:50.740Z","log.level":"info","service.name":"jspurefix",
+ "message":"[server] session ready - heartbeat only, HeartBtInt 10s",
+ "fix.component":"SkeletonSession","fix.app":"skeleton_server","fix.role":"server",
+ "fix.event":"session_ready","fix.heart_bt_int":10}
+```
+
+The console format names only four fields — timestamp, logger name, level, message —
+so context and fields are invisible to it. Adding them breaks nothing you already
+grep for, which is the point.
+
+### Fields worth filtering on
+
+| field | what it is |
+|---|---|
+| `fix.component` | `FixSession`, `TcpAcceptor`, `TcpInitiator`, `SessionRegistry`, `SkeletonSession` … |
+| `fix.app` | application name from the session description |
+| `fix.peer` | counterparty comp id, once a wildcard acceptor has bound one |
+| `fix.role` | `initiator` or `acceptor` |
+| `fix.event` | set by this demo on the lines worth counting |
+| `log.level` | `info`, `warn`, `error` |
+| `error.message`, `error.stack_trace` | on error lines, as their own fields |
+
+`fix.peer` is the one that earns its keep on a wildcard acceptor: the engine rebuilds
+its session logger once a client's `SenderCompID` is known, so every line after the
+bind carries the counterparty without anything having to thread it through.
+
+Without an Elastic stack anywhere:
+
+```shell
+npm run skeleton:json | grep FixSession
+npm run skeleton:json | jq -c 'select(."fix.event") | {t:."@timestamp", e:."fix.event"}'
+```
+
+### Emitting your own
+
+`skeleton.ts` is the worked example. Bind context once in the constructor:
+
+```typescript
+this.logger = config.logFactory.logger(`${this.me}:Skeleton`, {
+  component: 'SkeletonSession',
+  app: this.me,
+  role: this.role
+})
+```
+
+then add fields where a line carries a value:
+
+```typescript
+this.logger.info(`[${this.role}] session ready - heartbeat only, HeartBtInt ${heartBtInt}s`,
+  { event: 'session_ready', heart_bt_int: heartBtInt })
+```
+
+Note the message is unchanged, and the fields repeat some of it. That duplication is
+deliberate: a person reading a terminal wants a sentence, a query wants a number it
+does not have to parse out of one. Writing the sentence to suit the query gives you
+neither, and moving a value out of the message breaks whatever was grepping for it.
+
+`event` is the field to reach for first — a stable name for a line whose wording you
+may want to improve later without breaking a dashboard built on it.
+
+### Filebeat
+
+There is no shipper, agent or endpoint in the engine. Filebeat is a *push* pipeline,
+so structured output is the entire integration, and it needs no parsing rules because
+the lines are already objects:
+
+```yaml
+filebeat.inputs:
+  - type: filestream
+    paths: [ /var/log/myapp/fix.ndjson ]
+    parsers:
+      - ndjson:
+          target: ""
+          overwrite_keys: true
+```
+
+To write that file rather than stdout, swap `ecsOptions` for `ecsFileOptions(path)` in
+`logging.ts` — useful under a process manager that does not capture stdout.
+
+See [docs/instrumentation.md](https://github.com/TimelordUK/jspurefix/blob/master/docs/instrumentation.md)
+in jspurefix for the design, including what is deliberately not here yet: per-call
+fields on the engine's own chokepoint lines, and metrics.
 
 ## Dynamic acceptor — counterparties known only at logon
 
@@ -435,6 +543,7 @@ src/trade_capture/
   custom-logon.ts           — initiator whose Logon is built by its own factory
   broker-dictionary.ts      — generates a dictionary declaring the broker's Logon tags
   skeleton.ts               — logon and heartbeat only, both roles
+  logging.ts                — console or ECS JSON rendering, see --json-logs
   heap-report.ts            — periodic gc/heap rows, see --heap-every
 
 data/session/
