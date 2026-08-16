@@ -268,6 +268,10 @@ The console format names only four fields — timestamp, logger name, level, mes
 so context and fields are invisible to it. Adding them breaks nothing you already
 grep for, which is the point.
 
+> Needs jspurefix 5.11.3 or later. 5.11.2 introduced the API but repeated the level on
+> every line (`level` beside `log.level`) and put the stack trace in an error's `message`
+> as well as in `error.stack_trace`, which roughly doubled the largest lines.
+
 ### Fields worth filtering on
 
 | field | what it is |

@@ -45,7 +45,7 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^15.0.0",
-    "jspurefix": "^5.11.2",
+    "jspurefix": "^5.11.3",
     "reflect-metadata": "^0.2.2"
   },
   "overrides": {
