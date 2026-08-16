@@ -27,6 +27,8 @@ export interface CliOptions {
   heapEvery: number
   /** skeleton mode: write the raw FIX log, cleared by --no-fix-log */
   fixLog: boolean
+  /** emit one ECS style JSON object per log line instead of the console format */
+  jsonLogs: boolean
   /** acceptor drops the client after N seconds, so the initiator loses its transport */
   dropAfter?: number
   /** run the initiator that re-establishes a lost transport rather than ending with it */
@@ -143,6 +145,7 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     .option('--drop-after <seconds>', 'acceptor drops the client after N seconds - a lost transport, which --resilient recovers from', parseInt)
     .option('--heap-every <seconds>', 'print a gc/heap row every N seconds, 0 to disable (skeleton: 30)', parseInt)
     .option('--no-fix-log', 'skeleton mode: do not write the raw FIX log')
+    .option('--json-logs', 'emit ECS style JSON log lines for Filebeat instead of the console format')
     .option('--resilient', 'initiator keeps trying, and re-establishes a lost connection, instead of ending with it')
     .option('--retry-every <seconds>', '--resilient: seconds between attempts (default 3)', parseInt)
     .option('--give-up-after <seconds>', '--resilient: seconds of attempts before giving up (default 60)', parseInt)
@@ -239,6 +242,7 @@ export function parseCliOptions (argv?: string[]): CliOptions {
     lateJoinAfter: opts.lateJoinAfter ?? 8,
     heapEvery,
     fixLog: opts.fixLog ?? true,
+    jsonLogs: opts.jsonLogs ?? false,
     resilient,
     retryEvery: opts.retryEvery,
     giveUpAfter: opts.giveUpAfter

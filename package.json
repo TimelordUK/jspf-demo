@@ -1,6 +1,6 @@
 {
   "name": "jspf-demo",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "description": "",
   "main": "dist/trade_capture/app.js",
   "homepage": "https://github.com/TimelordUK/jspf-demo",
@@ -29,6 +29,7 @@
     "skeleton:clients": "node dist/trade_capture/app.js skeleton --clients 2",
     "skeleton:server": "node dist/trade_capture/app.js skeleton --server",
     "skeleton:client": "node dist/trade_capture/app.js skeleton --client",
+    "skeleton:json": "node dist/trade_capture/app.js skeleton --json-logs --timeout 20",
     "resilient": "node dist/trade_capture/app.js skeleton --client --resilient --retry-every 3",
     "resilient:recover": "node dist/trade_capture/app.js skeleton --resilient --retry-every 3 --drop-after 6 --timeout 25",
     "clear": "node dist/trade_capture/app.js clear",
@@ -44,7 +45,7 @@
   "license": "ISC",
   "dependencies": {
     "commander": "^15.0.0",
-    "jspurefix": "^5.11.1",
+    "jspurefix": "^5.11.3",
     "reflect-metadata": "^0.2.2"
   },
   "overrides": {

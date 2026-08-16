@@ -36,7 +36,14 @@ export class SkeletonSession extends AsciiSession {
     // nothing below reads an application message, so do not pay to render one
     this.logReceivedMsgs = false
     this.role = config.description.application?.type === 'initiator' ? 'client' : 'server'
-    this.logger = config.logFactory.logger(`${this.me}:Skeleton`)
+    // context bound once, repeated on every line this logger writes.  Nothing below
+    // has to pass it again, and with --json-logs it arrives as fix.component,
+    // fix.app and fix.role rather than as text inside the message
+    this.logger = config.logFactory.logger(`${this.me}:Skeleton`, {
+      component: 'SkeletonSession',
+      app: this.me,
+      role: this.role
+    })
     this.fixLog = SkeletonSession.writeFixLog
       ? config.logFactory.plain(`jsfix.${config?.description?.application?.name}.txt`)
       : null
@@ -48,25 +55,44 @@ export class SkeletonSession extends AsciiSession {
    * is to say what arrived and drop it: acting on a message is the application, and
    * the point of the mode is that there isn't one.
    */
+  /*
+   * The four handlers below carry per call fields as well.
+   *
+   * Note that the messages are unchanged - the prose still says everything it said
+   * before, and the fields repeat some of it.  That duplication is deliberate.  A
+   * person reading a terminal wants a sentence; a query wants a number it does not
+   * have to parse out of one.  Writing the sentence to suit the query gives you
+   * neither, and moving a value out of the message breaks whatever was grepping for
+   * it.
+   *
+   * `event` is the field to reach for first: a stable name for a line whose wording
+   * you may want to improve later without breaking a dashboard built on it.
+   */
+
   protected onApplicationMsg (msgType: string, _view: MsgView): void {
     if (++this.ignoredAppMsgs === 1) {
-      this.logger.info(`ignoring application messages - first was '${msgType}'`)
+      this.logger.info(`ignoring application messages - first was '${msgType}'`,
+        { event: 'app_msg_ignored', msg_type: msgType })
     }
   }
 
   protected onReady (_view: MsgView): void {
-    this.logger.info(`[${this.role}] session ready - heartbeat only, HeartBtInt ${this.config.description.HeartBtInt}s`)
+    const heartBtInt = this.config.description.HeartBtInt
+    this.logger.info(`[${this.role}] session ready - heartbeat only, HeartBtInt ${heartBtInt}s`,
+      { event: 'session_ready', heart_bt_int: heartBtInt })
     this.scheduleDisconnect()
   }
 
   protected onLogon (_view: MsgView, user: string, _password: string): boolean {
-    this.logger.info(`[${this.role}] logon accepted from user '${user}'`)
+    this.logger.info(`[${this.role}] logon accepted from user '${user}'`,
+      { event: 'logon_accepted', user })
     return true
   }
 
   protected onStopped (): void {
     const ignored = this.ignoredAppMsgs > 0 ? `, ignored ${this.ignoredAppMsgs} application messages` : ''
-    this.logger.info(`[${this.role}] session stopped${ignored}`)
+    this.logger.info(`[${this.role}] session stopped${ignored}`,
+      { event: 'session_stopped', ignored_app_msgs: this.ignoredAppMsgs })
   }
 
   protected onDecoded (_msgType: string, txt: string): void {
@@ -109,9 +135,10 @@ export class SkeletonSession extends AsciiSession {
   private scheduleStop (after: number | undefined, announce: string, act: string): void {
     if (after == null || this.hasScheduledDisconnect) return
     this.hasScheduledDisconnect = true
-    this.logger.info(`[${this.role}] ${announce} ${after}s`)
+    this.logger.info(`[${this.role}] ${announce} ${after}s`,
+      { event: 'stop_scheduled', after_seconds: after })
     setTimeout(() => {
-      this.logger.info(`[${this.role}] ${act}`)
+      this.logger.info(`[${this.role}] ${act}`, { event: 'stop_triggered' })
       this.stop()
     }, after * 1000)
   }
