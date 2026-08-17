@@ -69,7 +69,7 @@ class AppLauncher extends SessionLauncher {
       makeSession: (sessionConfig: IJsFixConfig): AsciiSession => isInitiator
         ? new Client(sessionConfig)
         : new Server(sessionConfig)
-    } as EngineFactory
+    }
   }
 }
 
