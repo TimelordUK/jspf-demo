@@ -12,6 +12,19 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    ignore:
+      # eslint-config-love 155 (latest) still declares peer eslint@^9.35.0, so
+      # eslint 10 cannot install at all - npm fails to resolve. Lift this once
+      # eslint-config-love supports eslint 10.
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      # typescript-eslint refuses to load against TS 7.0, and the typescript
+      # override below forces our version into its resolution too, so the
+      # documented side-by-side TS 6 arrangement is not available to us. tsc 7
+      # itself builds this project fine. Lift once typescript-eslint supports
+      # TS >=7.1 - https://github.com/typescript-eslint/typescript-eslint/issues/10940
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     groups:
       dev-dependencies:
         dependency-type: development
