@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Every advisory this repo has seen so far has been in the dev toolchain
+  # (eslint, ts-jest, madge), so group those into a single weekly PR rather
+  # than taking one PR per transitive bump.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      prod-dependencies:
+        dependency-type: production
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"
