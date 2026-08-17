@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src --max-warnings=0",
     "use:local": "npm install \"../.local-packages/jspurefix-local.tgz\"",
     "use:npm": "npm install jspurefix@latest",
     "tcp-tc": "node dist/trade_capture/app.js",
