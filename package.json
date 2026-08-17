@@ -59,7 +59,6 @@
     "eslint": "^9.39.4",
     "eslint-config-love": "^151.0.0",
     "madge": "^8.0.0",
-    "ts-jest": "^29.4.12",
     "typescript": "^6.0.3"
   }
 }
