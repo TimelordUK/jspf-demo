@@ -55,10 +55,10 @@
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/lodash": "^4.17.25",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.1",
     "@types/sax": "^1.2.7",
     "eslint": "^9.39.5",
-    "eslint-config-love": "^155.0.0",
+    "eslint-config-love": "^156.0.0",
     "madge": "^8.0.0",
     "typescript": "^6.0.3"
   }
