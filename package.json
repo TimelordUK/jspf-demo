@@ -57,7 +57,7 @@
     "@types/lodash": "^4.17.27",
     "@types/node": "^26.6.6",
     "@types/sax": "^1.2.7",
-    "eslint": "^9.39.5",
+    "eslint": "^10.15.0",
     "eslint-config-love": "^158.0.0",
     "madge": "^8.0.0",
     "typescript": "^6.0.3"
