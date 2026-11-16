@@ -45,7 +45,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "jspurefix": "^5.12.1",
     "reflect-metadata": "^0.2.2"
   },
